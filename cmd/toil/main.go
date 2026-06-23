@@ -1219,39 +1219,108 @@ func (list *inputList) ToMap() (map[string]any, error) {
 	return inputs, nil
 }
 
+// printUsage prints the top-level help text.
 func printUsage() {
-	fmt.Println("toil <command>")
-	fmt.Println("Environment:")
-	fmt.Println("  TOIL_URL=http://127.0.0.1:8080 (server address)")
-	fmt.Println("  TOIL_RUNS_DIR=/path/to/runs (override runs directory)")
-	fmt.Println("  TOIL_RUN_NARRATIVE_TIMEOUT=30s (used by narratives preview)")
-	fmt.Println("  TOIL_DISABLE_RESTORE=1 (skip restore on server start)")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  validate")
-	fmt.Println("  workflows list")
-	fmt.Println("  workflows show <id>")
-	fmt.Println("  run <workflow_id> --input key=value")
-	fmt.Println("  resume <run_id>")
-	fmt.Println("  cancel <run_id>")
-	fmt.Println("  runs list [--workflow <id>] [--status <status>] [--limit <n>]")
-	fmt.Println("  runs show <run_id>")
-	fmt.Println("  runs events <run_id>")
-	fmt.Println("  runs tree <root_run_id>")
-	fmt.Println("  narratives preview <run_id> [--runs-dir <dir>] [--intent] [--summary] [--prompt-only] [--include-prompt] [--pretty]")
-	fmt.Println("  approvals list")
-	fmt.Println("  approvals resolve <id> --decision <decision> --message <message> --comment <comment>")
-	fmt.Println("  visualize workflow <id>")
-	fmt.Println("  visualize run <run_id>")
-	fmt.Println("  inspect <run-id> [<aspect>]")
-	fmt.Println("  inspect <run-id> <node-id> [<aspect>]")
-	fmt.Println("  interrogate <run-id> <node-id> <question> [--once]")
-	fmt.Println("  serve --addr :8080 --daemon")
-	fmt.Println("  eval <id>")
-	fmt.Println("  human")
-	fmt.Println("  pause")
-	fmt.Println("  resume")
-	fmt.Println("  drain [--dry-run] [--force-cancel] [--wait]")
+	fmt.Print(`toil - File-defined workflow orchestrator
+
+CONCEPT
+
+  Toil runs workflows defined as YAML graphs of nodes and edges. Each node
+  dispatches to a runner (codex, claude, serf, shell, or human); the engine
+  resolves expressions, expands ForEach, applies retries and approvals, and
+  persists every run to disk as append-only events — no database.
+
+  Most run-management commands are thin HTTP clients against a running
+  server (see TOIL_URL); start one with "toil serve".
+
+ENVIRONMENT VARIABLES
+
+  TOIL_URL                     Server address (default http://127.0.0.1:8080).
+
+  TOIL_RUNS_DIR                Override the runs directory.
+
+  TOIL_RUN_NARRATIVE_TIMEOUT   Timeout used by narrative previews (e.g. 30s).
+
+  TOIL_DISABLE_RESTORE         Skip run restore when the server starts.
+
+OPERATING WORKFLOWS
+
+  Authoring, launching, and managing runs, plus running the server.
+
+  Definitions:
+    validate
+        Validate all workflow and runner definitions.
+    workflows list
+        List available workflow IDs.
+    workflows show <id>
+        Print a workflow definition as JSON.
+
+  Runs:
+    run <workflow_id> --input key=value
+        Start a new run of a workflow.
+    resume <run_id>
+        Resume a specific paused or waiting run.
+    cancel <run_id>
+        Cancel an in-flight run.
+    runs list [--workflow <id>] [--status <status>] [--limit <n>]
+        List runs, optionally filtered by workflow or status.
+    runs show <run_id>
+        Show a run's status and node states.
+    runs events <run_id>
+        Print a run's raw event log.
+    runs tree <root_run_id>
+        Show a run and its sub-runs as a tree.
+
+  Approvals:
+    approvals list
+        List pending approval requests.
+    approvals resolve <id> --decision <decision> --message <message> --comment <comment>
+        Resolve a pending approval with a decision.
+
+  Server & daemon:
+    serve --addr :8080 [--daemon]
+        Start the API and dashboard server.
+    pause
+        Stop new runs from starting.
+    resume
+        Re-enable new runs after a pause or drain.
+    drain [--dry-run] [--force-cancel] [--wait]
+        Pause and wind down in-flight runs.
+
+DEBUGGING & DEVELOPING TOIL
+
+  Introspection tools (used by the debug-run / watch-run skills) and the
+  eval harness for testing toil itself.
+
+  Inspection:
+    inspect <run-id> [<aspect>]
+        Inspect a run (status, events, cost, and more).
+    inspect <run-id> <node-id> [<aspect>]
+        Inspect a single node's execution.
+    interrogate <run-id> <node-id> <question> [--once]
+        Ask a node's agent a question (serf runners only).
+    visualize workflow <id>
+        Print a workflow's graph as JSON.
+    visualize run <run_id>
+        Print a run's execution graph as JSON.
+    narratives preview <run_id> [--intent] [--summary] [--prompt-only] [--include-prompt] [--pretty] [--runs-dir <dir>]
+        Generate a run's LLM-written title and summary text.
+
+  Testing:
+    eval <id>
+        Run the eval spec at tests/eval/<id>.yaml end-to-end: execute its
+        workflow for real (live runner/LLM calls), auto-resolve any
+        approvals, then run the spec's verify command to decide pass/fail.
+        A scenario test of toil itself — non-deterministic, spends real API
+        budget, and writes its result to runs/<run-id>/eval.json.
+
+OTHER
+
+  version
+      Print the toil version.
+  help
+      Print this message.
+`)
 }
 
 // backfillTotals walks every run dir and, for any terminal run with
