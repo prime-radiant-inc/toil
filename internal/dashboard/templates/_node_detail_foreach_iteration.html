@@ -1,0 +1,23 @@
+{{define "node-detail-foreach-iteration"}}
+<div data-node-detail-kind="foreach-iteration" class="p-3 space-y-3">
+    <div class="text-xs text-muted">
+        <span class="font-mono">{{.BaseID}}</span> → iteration {{.IterSuffix}}
+    </div>
+    {{with .Timeline}}
+    <div class="flex items-center gap-2">
+        <a href="{{.BasePath}}/runs/{{.RunID}}" class="font-mono text-sm text-accent hover:underline">{{.RunID}}</a>
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide {{statusClass .Status}}">{{.Status}}</span>
+        {{if .Title}}<span class="text-xs text-muted">{{.Title}}</span>{{end}}
+        <span class="text-xs text-muted ml-auto">
+            {{if not .StartedAt.IsZero}}{{.StartedAt.Local.Format "15:04:05"}}{{end}}
+            {{if gt .DurationMs 0}}<span class="ml-1">({{printf "%.1fs" (divFloat .DurationMs 1000.0)}})</span>{{end}}
+        </span>
+    </div>
+    {{if .Entries}}
+    <div class="space-y-px">
+        {{range .Entries}}{{template "timeline-entry" .}}{{end}}
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}

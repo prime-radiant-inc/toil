@@ -1,0 +1,32 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gocritic
+    - goconst
+    - misspell
+    - unconvert
+    - prealloc
+  settings:
+    goconst:
+      min-occurrences: 3
+      # Incidental repeated literals that are not domain concepts deserving
+      # a named constant (input-type tags, join/context/severity tokens).
+      # Anchored to exact words so unrelated strings still get flagged.
+      ignore-string-values:
+        - '^(string|all|required|fatal|compact|fresh|full|summary)$'
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - (net/http.ResponseWriter).Write
+  exclusions:
+    rules:
+      - linters: [goconst]
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofumpt
+    - gci

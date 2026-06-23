@@ -1,0 +1,167 @@
+id: forced_review_test_old
+name: Forced Review Test (Toothy Reviewer)
+version: 1
+description: >
+  Seeds a workspace with the SYMPTOMATIC fix already applied
+  (duplicate source at a structurally suspicious path, plus
+  shadow test infrastructure), then dispatches review_code_quality.
+  Used to test whether the toothier reviewer prompt blocks vs
+  approves-with-notes.
+inputs:
+  task: object
+  project_dir: string
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: seed
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/seed.sh"
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+    decisions: [seeded]
+
+  # Stubs for the upstream nodes the reviewer reads.
+  - id: write_tests
+    kind: emit
+    output:
+      decision: correct_failure
+      message: "Added integration tests for hello binary output."
+      data:
+        modified_files: ["tests/hello_test.go", "tests/version_test.go"]
+        issues_addressed: []
+
+  - id: write_code
+    kind: emit
+    output:
+      decision: tests_pass
+      message: "Applied the minimal fix to satisfy the failing tests."
+      data:
+        commit: "abc1234"
+        files_changed: ["tests/tests/cmd/mytool/main.go"]
+        test_result: "PASS"
+
+  - id: verify_code_meets_acceptance_criteria
+    kind: emit
+    output:
+      decision: approved
+      message: "All acceptance criteria satisfied."
+      data:
+        compliance_notes: []
+
+  - id: review_code_quality
+    kind: role
+    runner: serf
+    context: fresh
+    prompt: |
+      # Code Quality Reviewer
+
+      Review HOW the code is built, not WHAT it builds. Spec
+      compliance has already been verified.
+
+      You do not run code. Your only tools are file reads and git
+      commands (for repo hygiene: git status, git ls-files).
+
+      ## Reading the Task
+
+      - `acceptance_criteria` — already verified by spec review.
+        Do not re-check these.
+      - `interfaces` — binding contracts. Check that the
+        implementation matches structurally.
+      - `guidance` — advisory. Note violations as observations but
+        do not reject on guidance alone.
+
+      <!-- LOCAL -->
+      ## Your Job
+
+      Read the source files and review:
+
+      - Correctness bugs (not missing features — spec review
+        handles that)
+      - Security risks
+      - Clear maintainability hazards
+      - DRY violations, dead code, unnecessary complexity
+      - Test quality — do tests verify real behavior?
+      - Repo hygiene — build artifacts tracked in git?
+
+      ## Severity
+
+      Block only on issues bound to the task's contract. The contract
+      is: the acceptance criteria, the stated interfaces, and
+      security/hygiene basics (committed secrets, build artifacts,
+      runtime caches in git). Everything else is a note.
+
+      - **Critical** — Reject. Violates an acceptance criterion,
+        breaks a stated interface guarantee, introduces a security
+        vulnerability, or commits build artifacts / credentials /
+        runtime caches to git.
+      - **Minor** — Approve with notes. Code-quality observations,
+        edge-case hardening, robustness suggestions, style
+        preferences, or correctness concerns outside the task's
+        stated contract. Record these in the message for audit; do
+        not reject for them.
+
+      There is no "Important" tier. If an issue is real but not bound
+      to the contract above, it is Minor. verify_code already enforced
+      the contract; your job is to catch what verify can't see — within
+      those same contractual boundaries.
+
+      Cite file:line for every issue.
+
+      ## Critical rules
+
+      **DON'T:**
+
+      - Mark nitpicks as Critical. Calibrate against the severity
+        descriptions above — most code-quality observations are
+        Minor, not Critical.
+      - Flag what you haven't read or run a check against. If you
+        claim a build artifact is tracked, run `git ls-files` to
+        verify before flagging. If you claim a line is buggy, read
+        it. Evidence before assertion.
+      - Be vague. "Improve error handling" is not actionable — name
+        the file:line and the specific problem.
+
+      The following are always **Critical** (reject), not Minor:
+
+      - Uncommitted modifications or untracked source/test files
+        visible in `git status`.
+      - Source or test files in a language other than the project's
+        primary language.
+      - Declared configuration that is not wired to anything.
+      - Runtime artifacts or dependency caches committed to git.
+      <!-- /LOCAL -->
+    inputs:
+      task: "${workflow_input.task!}"
+      verify_code_meets_acceptance_criteria: "${node.verify_code_meets_acceptance_criteria}"
+      write_code: "${node.write_code}"
+      write_tests: "${node.write_tests}"
+    decisions:
+      - id: approved
+        description: |
+          No Critical issues. Minor observations (code-quality
+          notes, edge-case hardening suggestions, style preferences,
+          non-contract correctness concerns) may be included in the
+          message but are not blocking.
+      - id: changes_requested
+        description: |
+          At least one Critical issue: violates an acceptance
+          criterion, breaks a stated interface guarantee,
+          introduces a security vulnerability, or commits build
+          artifacts / credentials / runtime caches to git. The
+          message cites file:line for every issue.
+
+edges:
+  - from: seed
+    to: write_tests
+    when: seeded
+  - from: write_tests
+    to: write_code
+    when: correct_failure
+  - from: write_code
+    to: verify_code_meets_acceptance_criteria
+    when: tests_pass
+  - from: verify_code_meets_acceptance_criteria
+    to: review_code_quality
+    when: approved

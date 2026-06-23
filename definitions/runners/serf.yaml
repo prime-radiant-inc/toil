@@ -1,0 +1,13 @@
+id: serf
+type: serf
+command: serf
+args:
+  - --agent
+  - ${SERF_AGENT:-worker}
+  - --model
+  - ${SERF_PROVIDER:-openai}/${SERF_MODEL:-gpt-5.4}
+  - --reasoning-effort
+  - ${SERF_REASONING_EFFORT:-low}
+  - --verbose
+resume: true
+timeout_sec: 1200

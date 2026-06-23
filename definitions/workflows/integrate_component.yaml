@@ -1,0 +1,209 @@
+id: integrate_component
+name: Integrate Component
+version: 1
+description: >
+  Merge one component's branch into the integration branch. If there's
+  a conflict, an LLM resolver handles it. Both paths converge at a
+  shared export node, then integration tests verify the merged result.
+  The happy path is fully mechanical (shell only).
+interview: on_issue
+limits:
+  max_loop_iterations: 5
+inputs:
+  component: object
+  project_dir: string
+  spec: string
+  stories: list
+  parent_run_id: string
+  repo: string
+input_schema:
+  repo:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: merge_branch
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/merge_branch.sh"
+    inputs:
+      repo: "${workflow_input.repo}"
+      component_id: "${workflow_input.component.id!}"
+      parent_run_id: "${workflow_input.parent_run_id!}"
+    decisions:
+      - id: merged
+        description: |
+          The component's branch merged cleanly into the integration
+          branch. The happy path is fully mechanical; the next step
+          is cleanup_component_worktree → export_tree → integration
+          verification.
+      - id: conflict
+        description: |
+          The merge produced conflicts. The conflicting files are
+          left in a temporary merge worktree (path surfaced as
+          `data.merge_worktree`) for the LLM resolver to handle.
+          finalize_merge cleans up the temp worktree once the
+          resolver commits.
+
+  - id: resolve_conflict
+    kind: role
+    runner: serf
+    context: fresh
+    prompt: |
+      # Conflict Resolver
+
+      A merge conflict occurred while merging this component's
+      branch. The conflicting files are in the merge worktree
+      at the path provided in the merge_worktree input.
+
+      ## Your Job
+
+      1. Read the conflicting files in the merge worktree
+      2. Read the spec to understand what each side intended
+      3. Edit the conflicting files to resolve the conflicts
+         (remove conflict markers, keep the correct content)
+      4. Run `git add` on the resolved files in the merge worktree
+      5. Run `git commit` to complete the merge
+      6. Decide `resolved`
+
+      ## Resolution Principles
+
+      - The spec is the source of truth for intended behavior
+      - Prefer the version that matches spec requirements more
+        closely
+      - If both versions are spec-compliant, merge them (include
+        both contributions)
+      - Document what you resolved and why in your message
+
+      <!-- LOCAL -->
+      ## Constraints
+
+      Do NOT run tgwm commands, push, export, or any operation
+      beyond resolving the conflict and committing. The shell
+      node handles the rest.
+
+      Work in the merge worktree directory, not the project
+      directory.
+      <!-- /LOCAL -->
+    inputs:
+      spec: "${workflow_input.spec!}"
+      component: "${workflow_input.component!}"
+      merge_worktree: "${node.merge_branch.data.merge_worktree!}"
+    decisions:
+      - id: resolved
+        description: |
+          Conflicts in the merge worktree have been edited away
+          (conflict markers removed, correct content kept per
+          spec-of-truth principle: prefer the version that matches
+          spec requirements more closely; when both are
+          spec-compliant, merge them). The resolved files have been
+          `git add`-ed and a commit has been made to complete the
+          merge. The message documents what was resolved and why.
+          The shell node (finalize_merge) takes it from here — do
+          NOT run tgwm commands, push, or export from this node.
+
+  - id: finalize_merge
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/finalize_merge.sh"
+    inputs:
+      repo: "${workflow_input.repo}"
+      merge_worktree: "${node.merge_branch.data.merge_worktree!}"
+
+  - id: cleanup_component_worktree
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/cleanup_component_worktree.sh"
+    inputs:
+      repo: "${workflow_input.repo}"
+      component_id: "${workflow_input.component.id!}"
+      parent_run_id: "${workflow_input.parent_run_id!}"
+
+  - id: export_tree
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/export_tree.sh"
+    inputs:
+      repo: "${workflow_input.repo}"
+      project_dir: "${workflow_input.project_dir!}"
+
+  - id: verify_integration
+    kind: subworkflow
+    workflow: verify_integration
+    inputs:
+      spec: "${workflow_input.spec!}"
+      stories: "${workflow_input.stories!}"
+      project_dir: "${node.export_tree.message!}"
+
+  - id: debug_integration_failure
+    kind: subworkflow
+    workflow: debug
+    inputs:
+      error_context: "${node.verify_integration.message!}"
+      error_data: "${node.verify_integration.data}"
+      project_dir: "${workflow_input.project_dir!}"
+
+  - id: declare_integration_stuck
+    kind: emit
+    inputs:
+      verify_msg: "${node.verify_integration.message}"
+      debug_msg:  "${node.debug_integration_failure.message}"
+    output:
+      decision: escalate
+      message: "Integrate-component loop exhausted. Last verify: ${input.verify_msg}"
+      data:
+        last_verify_integration_message: "${input.verify_msg}"
+        last_debug_failure_message:      "${input.debug_msg}"
+    decisions: [escalate]
+
+edges:
+  # Clean merge → cleanup_component_worktree → export_tree
+  - from: merge_branch
+    to: cleanup_component_worktree
+    when: merged
+
+  # Conflict → LLM resolves → finalize (cleanup temp merge worktree)
+  # → cleanup_component_worktree → export_tree
+  - from: merge_branch
+    to: resolve_conflict
+    when: conflict
+  - from: resolve_conflict
+    to: finalize_merge
+    when: resolved
+  - from: finalize_merge
+    to: cleanup_component_worktree
+    when: default
+
+  - from: cleanup_component_worktree
+    to: export_tree
+    when: default
+
+  # export_tree → verify_integration → debug loop. No polyglot-specific
+  # bootstrap gate: if the verify_integration subworkflow can't bootstrap
+  # the tree, it surfaces that as a normal failure and
+  # debug_integration_failure handles it like any other.
+  - from: export_tree
+    to: verify_integration
+    when: default
+  - from: verify_integration
+    to: debug_integration_failure
+    when: fail
+  # When verify_integration's internal loops exhausted, it emits escalate.
+  # Route that decision to the stuck aggregator as well.
+  - from: verify_integration
+    to: declare_integration_stuck
+    when: escalate
+  - from: debug_integration_failure
+    to: verify_integration
+    when: default
+  # Meta-decision edges: when either loop node in this SCC exhausts its
+  # integrate_component-level budget, route to the declarative aggregator.
+  - from: verify_integration
+    to: declare_integration_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: debug_integration_failure
+    to: declare_integration_stuck
+    when: _loop_exhausted
+    failed: true

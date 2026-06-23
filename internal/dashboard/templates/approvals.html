@@ -1,0 +1,128 @@
+{{template "layout-start" .}}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div>
+        <h1 class="heading-display text-2xl">Approvals</h1>
+        <p class="text-sm text-muted">Human gates waiting on decisions.</p>
+    </div>
+
+    <div class="space-y-4">
+        {{if .Pending}}
+        {{range .Pending}}
+        <div class="card">
+            <div class="px-4 py-3 border-b border-edge flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium">{{.NodeLabel}}</div>
+                    <div class="text-xs text-muted">Run <a class="text-accent hover:underline" href="{{$.BasePath}}/runs/{{.RunID}}">{{.RunID}}</a> - {{.CreatedAt}}</div>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">pending</span>
+            </div>
+            <form class="p-4 space-y-4" action="{{$.BasePath}}/approvals/{{.ID}}/resolve" method="post"
+                  {{if .DecisionOptions}}data-default-decision="{{index .DecisionOptions 0}}"{{end}}
+                  x-data="{decision: $el.dataset.defaultDecision || ''{{if .DeadlineUnix}}, deadline: {{.DeadlineUnix}}, remaining: ''{{end}} }"
+                  {{if .DeadlineUnix}}x-init="
+                    let tick = () => {
+                        let left = deadline - Math.floor(Date.now()/1000);
+                        if (left <= 0) { remaining = 'expired'; return; }
+                        let h = Math.floor(left/3600), m = Math.floor((left%3600)/60), s = left%60;
+                        remaining = (h > 0 ? h+'h ' : '') + (m > 0 ? m+'m ' : '') + s+'s';
+                    };
+                    tick(); setInterval(tick, 1000);
+                  "{{end}}>
+                {{if .QuestionHTML}}
+                <div class="border border-edge bg-surface rounded-lg p-3 text-sm">
+                    <div class="prose max-w-none">{{.QuestionHTML}}</div>
+                </div>
+                {{end}}
+                {{if .DeadlineUnix}}
+                <div class="flex items-center gap-2 text-sm text-muted">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Timeout: <span x-text="remaining" class="font-mono"></span></span>
+                    <span class="text-xs">(default: {{.TimeoutDefault}})</span>
+                </div>
+                {{end}}
+                <input type="hidden" name="decision" x-model="decision">
+                {{if .DecisionOptions}}
+                <div>
+                    <label class="block text-sm font-medium text-ink-light mb-2">Decision</label>
+                    <div class="flex flex-wrap gap-2">
+                        {{range .DecisionOptions}}
+                        <button type="button"
+                                data-value="{{.}}"
+                                @click="decision = $el.dataset.value"
+                                :class="decision === $el.dataset.value ? 'bg-accent text-white' : 'bg-surface text-ink border border-edge hover:border-accent'"
+                                class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors">
+                            {{.}}
+                        </button>
+                        {{end}}
+                    </div>
+                </div>
+                {{else}}
+                <div>
+                    <label class="block text-sm font-medium text-ink-light">Decision</label>
+                    <input class="input-field mt-1" x-model="decision" type="text" required>
+                </div>
+                {{end}}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-ink-light">Message</label>
+                        <input class="input-field mt-1" name="message" type="text" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-ink-light">Comment (optional)</label>
+                        <textarea class="input-field mt-1" name="comment" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="flex items-center justify-end">
+                    <button class="btn-primary w-full sm:w-auto min-h-[48px]" type="submit">Resolve</button>
+                </div>
+            </form>
+        </div>
+        {{end}}
+        {{else}}
+        <div class="card px-4 py-6 text-center">
+            <div class="text-sm text-muted">No pending approvals.</div>
+            <div class="mt-1 text-xs text-muted">When workflow runs reach human gates, they'll appear here.</div>
+        </div>
+        {{end}}
+    </div>
+
+    {{if .Resolved}}
+    <div class="card">
+        <div class="px-4 py-3 border-b border-edge">
+            <h2 class="heading-display text-lg">Resolved</h2>
+        </div>
+        <div>
+            <!-- Desktop header (hidden on mobile) -->
+            <div class="hidden lg:grid grid-cols-12 gap-2 px-4 py-2 bg-surface section-label">
+                <div class="col-span-3">Approval</div>
+                <div class="col-span-2">Decision</div>
+                <div class="col-span-4">Message</div>
+                <div class="col-span-3">Resolved</div>
+            </div>
+            {{range .Resolved}}
+            <div class="border-t border-edge-light">
+                <div class="lg:grid lg:grid-cols-12 lg:gap-2 lg:items-center px-4 py-3 space-y-1 lg:space-y-0">
+                    <div class="lg:col-span-3">
+                        <span class="text-xs text-muted lg:hidden">Approval: </span>
+                        <span class="font-mono text-xs">{{.ID}}</span>
+                    </div>
+                    <div class="lg:col-span-2 text-sm">
+                        <span class="text-xs text-muted lg:hidden">Decision: </span>
+                        {{.Decision}}
+                    </div>
+                    <div class="lg:col-span-4 text-sm text-ink-light">
+                        <span class="text-xs text-muted lg:hidden">Message: </span>
+                        {{.Message}}
+                    </div>
+                    <div class="lg:col-span-3 text-sm text-ink-light">
+                        <span class="text-xs text-muted lg:hidden">Resolved: </span>
+                        {{.ResolvedAt}}
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</div>
+{{template "layout-end" .}}

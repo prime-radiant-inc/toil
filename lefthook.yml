@@ -1,0 +1,25 @@
+pre-commit:
+  commands:
+    # `make build` produces both bin/toil and bin/tgwm. The engine
+    # shells out to bin/tgwm at runtime, so bin/ going stale relative
+    # to source silently breaks shell nodes that depend on tgwm CLI
+    # surface added since the last manual build. Keeping bin/ fresh
+    # at commit time makes "git pull && bin/toil serve" work without
+    # an explicit rebuild step.
+    build:
+      run: make build
+    # Full lint at pre-commit. Scoping to staged files was attempted but
+    # breaks on multi-package commits (golangci-lint errors with
+    # "named files must all be in one directory") and can't resolve
+    # package-level symbols when given single files.
+    #
+    # The blocking-on-unrelated-WIP concern from parallel-agent workflows
+    # is better addressed at the process layer — see ~/.claude/CLAUDE.md
+    # "Parallel agents and file-state races" — via git worktrees.
+    lint:
+      run: golangci-lint run ./cmd/... ./internal/...
+
+pre-push:
+  commands:
+    test:
+      run: go test ./cmd/... ./internal/...

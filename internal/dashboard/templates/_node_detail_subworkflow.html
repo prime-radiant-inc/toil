@@ -1,0 +1,29 @@
+{{define "node-detail-subworkflow"}}
+<div data-node-detail-kind="{{.Kind}}" class="p-3 space-y-3">
+    {{if not .Timelines}}
+    <div class="text-muted text-xs">No child runs have been dispatched yet.</div>
+    {{else}}
+    {{range .Timelines}}
+    <div class="border border-edge rounded" x-data="{ open: true }">
+        <div class="flex items-center justify-between p-2">
+            <div class="flex items-center gap-2">
+                <button class="text-xs text-muted hover:text-ink" @click="open = !open">
+                    <span x-show="!open" x-cloak>▸</span><span x-show="open">▾</span>
+                </button>
+                <a href="{{.BasePath}}/runs/{{.RunID}}" class="font-mono text-sm text-accent hover:underline">{{.RunID}}</a>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide {{statusClass .Status}}">{{.Status}}</span>
+                {{if .Title}}<span class="text-xs text-muted">{{.Title}}</span>{{end}}
+            </div>
+            <div class="text-xs text-muted">
+                {{if not .StartedAt.IsZero}}{{.StartedAt.Local.Format "15:04:05"}}{{end}}
+                {{if gt .DurationMs 0}}<span class="ml-1">({{printf "%.1fs" (divFloat .DurationMs 1000.0)}})</span>{{end}}
+            </div>
+        </div>
+        <div x-show="open" class="border-t border-edge p-2 space-y-px">
+            {{range .Entries}}{{template "timeline-entry" .}}{{end}}
+        </div>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}

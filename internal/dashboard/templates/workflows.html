@@ -1,0 +1,54 @@
+{{template "layout-start" .}}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="heading-display text-2xl">Workflows</h1>
+            <p class="text-sm text-muted">Available orchestration graphs.</p>
+        </div>
+    </div>
+
+    {{if .Workflows}}
+    <div x-data="{query: ''}">
+        <input id="filter-workflows" type="text" class="input-field max-w-xs" placeholder="Filter workflows..." x-model="query">
+        <div class="card mt-6">
+            <div id="workflows-table">
+                <!-- Desktop header (hidden on mobile) -->
+                <div class="hidden lg:grid grid-cols-12 gap-2 px-4 py-2 bg-surface section-label rounded-t-lg">
+                    <div class="col-span-3">Workflow</div>
+                    <div class="col-span-4">Description</div>
+                    <div class="col-span-1">Nodes</div>
+                    <div class="col-span-3">Tags</div>
+                    <div class="col-span-1"></div>
+                </div>
+                {{range .Workflows}}
+                <a href="{{$.BasePath}}/workflows/{{.ID}}" class="block border-t border-edge-light hover:bg-surface transition-colors" x-show="!query || $el.textContent.toLowerCase().includes(query.toLowerCase())">
+                    <div class="lg:grid lg:grid-cols-12 lg:gap-2 lg:items-center px-4 py-3 space-y-1 lg:space-y-0">
+                        <div class="lg:col-span-3 font-medium text-sm">{{.Name}}</div>
+                        <div class="lg:col-span-4 text-sm text-ink-light truncate">{{.Description}}</div>
+                        <div class="lg:col-span-1 text-sm text-ink-light">
+                            <span class="text-xs text-muted lg:hidden">Nodes: </span>
+                            {{.NodeCount}}
+                        </div>
+                        <div class="lg:col-span-3 text-xs text-muted">
+                            <span class="lg:hidden">Tags: </span>
+                            {{.Tags}}
+                        </div>
+                        <div class="lg:col-span-1 text-right hidden lg:block">
+                            <span class="text-accent text-sm">View</span>
+                        </div>
+                    </div>
+                </a>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{else}}
+    <div class="card">
+        <div class="px-4 py-8 text-center">
+            <div class="text-sm text-muted">No workflows found.</div>
+            <div class="mt-1 text-xs text-muted">Add workflow YAML files to your project to see them here.</div>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{template "layout-end" .}}

@@ -1,0 +1,235 @@
+id: debug_merge
+name: Debug Merge
+version: 1
+description: >
+  Specialized debugging for post-merge integration failures. Both sides
+  of the merge compiled and passed tests independently — the failure is
+  at the interface between the newly merged code and the existing codebase.
+interview: on_issue
+inputs:
+  error_context: string
+  error_data: object
+  spec: string
+  task: object
+  project_dir: string
+input_schema:
+  error_data:
+    optional: true
+    description: >
+      Structured findings from the node that produced the error (e.g.
+      a run_integration_tests or run_e2e_tests node's failure breakdown).
+      Prefer this over error_context when citing file:line or reproduction
+      steps; error_context is a summary, error_data is the evidence.
+  spec:
+    optional: true
+  task:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: merge_engineer
+    kind: role
+    runner: serf
+    prompt: |
+      # Merge Engineer
+
+      You are debugging a **post-merge integration failure**. This is NOT a
+      normal bug — both sides of the merge compiled and passed their tests
+      independently. The failure only appeared after merging the feature
+      branch into the main codebase.
+
+      ## Starting Signals
+
+      - `error_context` — the upstream tester's one-line summary. A
+        pointer, not evidence.
+      - `error_data` — the upstream tester's structured findings (e.g.
+        per-story results from `run_e2e_tests`, per-boundary failures
+        from `run_integration_tests`). Read this first; it tells you which
+        boundary failed and why.
+
+      ## What This Means
+
+      The feature code works in isolation. The main codebase works without it.
+      When combined, something breaks. The root cause is almost always at the
+      **boundary** between the new code and the existing code.
+
+      ## Common Causes (Check These First)
+
+      1. **Import/package paths** — the feature references a package path that
+         doesn't exist in the merged tree (renamed, moved, or never created)
+      2. **Interface mismatches** — the feature implements or calls an interface
+         that changed on main since the feature branched
+      3. **Naming conflicts** — two components define the same type, function,
+         or variable name
+      4. **Missing glue code** — the feature assumes a helper, init function,
+         or registration that another component was supposed to provide
+      5. **Dependency version conflicts** — go.mod, package.json, or similar
+         has conflicting version requirements
+      6. **Build/config assumptions** — the feature assumes env vars, build
+         tags, or config that only existed in its worktree
+
+      ## Method
+
+      ### Phase 0: Check Upstream Waivers
+
+      If `upstream_overrides` is non-empty, earlier review cycles in
+      this execution group deliberately waived concerns (decision
+      `force_approve` or `skip_task`) rather than resolving them.
+      Each entry has `run_id`, `node_id`, `decision`, `message`, and
+      `data.waived_concerns` (a list of `{source, concern,
+      justification}` items).
+
+      **For each waived concern, ask: could the symptom I'm seeing now
+      be a consequence of this waiver?** Language matching is a
+      strong signal — if a waiver mentioned "toolchain" or "entrypoint
+      bootstrap" and the current error is "tsc: command not found",
+      the waived concern is almost certainly the root cause.
+
+      If you find a match, treat it as your primary hypothesis. Start
+      from the waived concern's details (file paths, specific claims)
+      rather than re-diagnosing from scratch.
+
+      If upstream_overrides is absent or empty, skip this phase.
+
+      ### Phase 1: Reproduce and Locate
+
+      1. Run the failing test command. Read ALL output — error messages,
+         compiler errors, stack traces
+      2. Identify the exact failure point: which file, which line, which
+         symbol is unresolved or wrong
+      3. Classify: is this a compile error, a test failure, or a runtime error?
+
+      ### Phase 2: Trace the Boundary
+
+      1. For compile errors: find where the missing symbol should be defined.
+         Check if it exists under a different name or path
+      2. For test failures: compare what the test expects vs what the merged
+         code provides. Check if an interface or contract changed
+      3. For runtime errors: trace the data flow across the component boundary
+         where the failure occurs
+
+      ### Phase 3: Fix Forward
+
+      Apply the minimal fix to make the merged code work. Common fixes:
+      - Update import paths
+      - Add missing type assertions or interface implementations
+      - Rename conflicting symbols
+      - Add missing registration or initialization calls
+      - Update dependency declarations
+
+      You do NOT revert the merge or undo the feature. You fix forward.
+
+      <!-- LOCAL -->
+      Decide `root_cause_confirmed` when you have a confirmed diagnosis and
+      fix strategy.
+      Decide `investigating` if you need more investigation.
+      <!-- /LOCAL -->
+    inputs:
+      error_context: "${workflow_input.error_context!}"
+      error_data: "${workflow_input.error_data}"
+      spec: "${workflow_input.spec}"
+      task: "${workflow_input.task}"
+      # Upstream waivers from earlier review cycles in the same
+      # execution group, collected across the run tree. `override` is
+      # a workflow-declared tag on force_approve / skip_task in
+      # implement_task.yaml; the tree.tagged.<name> expression is
+      # generic over tag name, so other workflows can declare and
+      # consume their own tags without touching the harness.
+      # Empty list when no overrides exist; Phase 0 above explains
+      # how to use it.
+      upstream_overrides: "${tree.tagged.override}"
+    decisions: [investigating, root_cause_confirmed]
+
+  - id: code_engineer
+    kind: role
+    runner: serf
+    prompt: |
+      # Code Engineer (Merge Fix)
+
+      Implement the fix based on the merge engineer's diagnosis. This is a
+      post-merge integration fix — the code worked in isolation but fails
+      when combined.
+
+      Make the minimal *correct* change for the root cause the merge
+      engineer identified. A smaller diff that papers over the diagnosis —
+      e.g., satisfying a wrong path by creating a file there, instead of
+      fixing whatever computes the path — is wrong, not minimal.
+
+      If you believe the merge engineer misunderstood the code, don't
+      fake compliance to make tests green. Make the change you believe
+      is correct (or leave things alone, if that's right), add code
+      comments explaining the divergence so future readers see the
+      reasoning, and explain the disagreement in your decision message.
+
+      - Do not refactor or improve unrelated code
+      - Run the full test suite after the change and report what you see
+      - Follow existing codebase patterns and style
+      - You get 3 attempts to make tests pass. If tests still fail after
+        3 cycles, decide fix_failed and hand back with the failure output
+        so the merge engineer can try a different hypothesis.
+      - Never run standalone build commands (e.g. `go build`) — they
+        create binary artifacts. Use the test command which compiles
+        and tests in one step.
+      - Commit your fix when tests pass. Stage specific files — NEVER use
+        `git add -A` or `git add .`. These commands pick up build artifacts
+        (compiled binaries, .pyc files, __pycache__/) that must not be in
+        the repository.
+
+      <!-- LOCAL -->
+      ## Reporting the Outcome
+
+      - **fix_applied**: The full test suite is green after your change.
+      - **fix_failed**: Tests still fail. Include command + failure output
+        + a note on why the merge engineer's hypothesis didn't resolve it.
+
+      Do not claim fix_applied without a successful test run.
+      <!-- /LOCAL -->
+    inputs:
+      task: "${workflow_input.task}"
+    decisions: [fix_applied, fix_failed]
+
+  - id: declare_merge_stuck
+    kind: emit
+    inputs:
+      merge_msg: "${node.merge_engineer.message}"
+      fix_msg:   "${node.code_engineer.message}"
+    output:
+      decision: escalate
+      message: "Debug-merge loop exhausted. Last merge engineer: ${input.merge_msg}"
+      data:
+        last_merge_engineer_message: "${input.merge_msg}"
+        last_code_engineer_message:  "${input.fix_msg}"
+    decisions: [escalate]
+
+edges:
+  - from: merge_engineer
+    to: merge_engineer
+    when: investigating
+  - from: merge_engineer
+    to: code_engineer
+    when: root_cause_confirmed
+    passes:
+      merge_engineer: "${node.merge_engineer}"
+    prompt: |
+      The merge engineer has confirmed the root cause of the integration
+      failure. Read the merge_engineer input and implement the minimal fix.
+  - from: code_engineer
+    to: merge_engineer
+    when: fix_failed
+    prompt: |
+      The fix did not resolve the integration failure. Investigate further
+      with the new evidence. Remember: both sides passed independently —
+      the issue is at the boundary between them.
+  # Meta-decision edges: when either loop node exhausts, route to the
+  # declarative aggregator (mirrors the debug.yaml f7gy pattern).
+  - from: merge_engineer
+    to: declare_merge_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: code_engineer
+    to: declare_merge_stuck
+    when: _loop_exhausted
+    failed: true
+limits:
+  max_loop_iterations: 5

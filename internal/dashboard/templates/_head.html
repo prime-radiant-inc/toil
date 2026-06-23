@@ -1,0 +1,813 @@
+{{define "head"}}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} | {{end}}Toil</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232d3748'/%3E%3Ctext x='16' y='23' font-family='serif' font-size='20' font-weight='bold' fill='%235ba3a3' text-anchor='middle'%3ET%3C/text%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="{{.BasePath}}/static/js/htmx.min.js"></script>
+    <script src="{{.BasePath}}/static/js/idiomorph-ext.min.js"></script>
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('durationTimer', (startMs, finishMs) => ({
+                display: '',
+                _interval: null,
+                start() {
+                    if (!startMs) { this.display = '-'; return; }
+                    if (finishMs) {
+                        this.display = this._fmt(finishMs - startMs);
+                        return;
+                    }
+                    this._tick();
+                    this._interval = setInterval(() => this._tick(), 1000);
+                },
+                _tick() {
+                    this.display = this._fmt(Date.now() - startMs);
+                },
+                _fmt(ms) {
+                    let s = Math.floor(ms / 1000);
+                    if (s < 0) s = 0;
+                    const h = Math.floor(s / 3600);
+                    const m = Math.floor((s % 3600) / 60);
+                    s = s % 60;
+                    if (h > 0) return h + 'h' + String(m).padStart(2, '0') + 'm' + String(s).padStart(2, '0') + 's';
+                    if (m > 0) return m + 'm' + String(s).padStart(2, '0') + 's';
+                    return s + 's';
+                },
+                destroy() {
+                    if (this._interval) clearInterval(this._interval);
+                }
+            }));
+            Alpine.data('transcriptDrawer', () => ({
+                open: false,
+                runLabel: '',
+                nodeLabel: '',
+                _currentURL: '',
+                _syncsHash: false,
+                init() {
+                    window.__transcriptDrawer = this;
+                },
+                openFor(runID, nodeID, basePath) {
+                    this.runLabel = runID;
+                    this.nodeLabel = nodeID;
+                    this._currentURL = basePath + '/runs/' + runID + '/nodes/' + nodeID + '/detail';
+                    this._syncsHash = true;
+                    this.open = true;
+                    this._load();
+                    this._syncHash(runID, nodeID);
+                },
+                openURL(primaryLabel, secondaryLabel, url) {
+                    this.runLabel = primaryLabel;
+                    this.nodeLabel = secondaryLabel;
+                    this._currentURL = url;
+                    this._syncsHash = false;
+                    this.open = true;
+                    this._clearHash();
+                    this._load();
+                },
+                refetch() {
+                    if (this.open && this._currentURL) this._load();
+                },
+                close() {
+                    this.open = false;
+                    if (this._syncsHash) this._clearHash();
+                    this._syncsHash = false;
+                    this._currentURL = '';
+                },
+                _load() {
+                    const target = document.getElementById('transcript-drawer-body');
+                    if (!target || !this._currentURL) return;
+                    target.innerHTML = '<div class="text-muted text-xs p-4">Loading…</div>';
+                    htmx.ajax('GET', this._currentURL, { target: target, swap: 'innerHTML' });
+                },
+                _syncHash(runID, nodeID) {
+                    const p = new URLSearchParams(location.hash.substring(1));
+                    p.set('node', runID + '::' + nodeID);
+                    history.replaceState(null, '', '#' + p.toString());
+                },
+                _clearHash() {
+                    const p = new URLSearchParams(location.hash.substring(1));
+                    p.delete('node');
+                    const h = p.toString();
+                    history.replaceState(null, '', h ? '#' + h : location.pathname);
+                },
+            }));
+            Alpine.data('foldable', (maxLines) => ({
+                expanded: false,
+                overflows: false,
+                extraLines: 0,
+                _measured: false,
+                measure() {
+                    if (this._measured) return;
+                    const el = this.$refs.content;
+                    if (!el || el.offsetParent === null) return;
+                    this._measured = true;
+                    const lineH = parseFloat(getComputedStyle(el).lineHeight) || 20;
+                    const maxH = lineH * maxLines;
+                    if (el.scrollHeight > maxH + lineH * 0.5) {
+                        this.overflows = true;
+                        this.extraLines = Math.round((el.scrollHeight - maxH) / lineH);
+                    }
+                },
+                collapse() {
+                    this.expanded = false;
+                    this.$nextTick(() => this.measure());
+                },
+            }));
+        });
+    </script>
+    <script defer src="{{.BasePath}}/static/js/alpine.min.js"></script>
+    <script src="{{.BasePath}}/static/js/tailwind.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ink: { DEFAULT: '#1b2631', light: '#374a5e' },
+                        accent: { DEFAULT: '#1a6b5a', light: '#d4ece8', wash: '#eaf5f2' },
+                        surface: '#f6f8fa',
+                        panel: '#eef1f5',
+                        edge: { DEFAULT: '#e1e4e8', light: '#eef1f5' },
+                        muted: '#6b7c8f',
+                    },
+                    fontFamily: {
+                        display: ['Fraunces', 'serif'],
+                        body: ['DM Sans', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github.min.css">
+    <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
+    <script defer src="{{.BasePath}}/static/js/elk-graph.js"></script>
+    <script defer src="{{.BasePath}}/static/js/toil.js"></script>
+    <style>
+        body { font-family: 'DM Sans', sans-serif; color: #1b2631; }
+        [x-cloak] { display: none !important; }
+
+        /* Component classes */
+        .btn-primary {
+            background-color: #1a6b5a;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.15s;
+        }
+        .btn-primary:hover { background-color: color-mix(in srgb, #1a6b5a 90%, black); }
+        .btn-primary:disabled { opacity: 0.5; }
+
+        .card {
+            background: white;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.5rem;
+            transition: border-color 0.15s;
+        }
+
+        .input-field {
+            width: 100%;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+        }
+        .input-field:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px color-mix(in srgb, #1a6b5a 30%, transparent);
+            border-color: #1a6b5a;
+        }
+        .input-field:disabled { opacity: 0.5; }
+
+        .heading-display {
+            font-family: 'Fraunces', serif;
+            font-weight: 500;
+            color: #1b2631;
+        }
+
+        .section-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #6b7c8f;
+        }
+
+        .link-back {
+            font-size: 0.75rem;
+            color: #6b7c8f;
+            transition: color 0.15s;
+        }
+        .link-back:hover { color: #1b2631; }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            color: #6b7c8f;
+        }
+        .breadcrumb a { color: #6b7c8f; transition: color 0.15s; }
+        .breadcrumb a:hover { color: #1b2631; }
+        .breadcrumb .separator { color: #e1e4e8; }
+
+        .link-subtle {
+            font-size: 0.875rem;
+            color: #6b7c8f;
+            transition: color 0.15s;
+        }
+        .link-subtle:hover { color: #1b2631; }
+
+        /* Runs panel — unified visual vocabulary across runs and nodes. */
+        .runs-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.125rem 0;
+            font-size: 0.75rem;
+            line-height: 1.2;
+        }
+        .runs-row-current { background: #eaf5f2; border-radius: 0.25rem; }
+        details > summary.runs-row { cursor: pointer; list-style: none; }
+        details > summary.runs-row::-webkit-details-marker { display: none; }
+        .runs-chevron {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            flex: 0 0 10px;
+            color: #6b7c8f;
+            transition: transform 0.1s;
+        }
+        .runs-chevron::before {
+            content: '▸';
+            font-size: 10px;
+            line-height: 10px;
+        }
+        details[open] > summary .runs-chevron { transform: rotate(90deg); }
+        .runs-chevron-spacer {
+            display: inline-block;
+            width: 10px;
+            flex: 0 0 10px;
+        }
+        .runs-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            flex: 0 0 8px;
+            border-radius: 9999px;
+        }
+        .runs-label {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.75rem;
+        }
+        .runs-runid {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.6875rem;
+            color: #6b7c8f;
+            opacity: 0.75;
+        }
+        .runs-time {
+            font-size: 0.625rem;
+            color: #6b7c8f;
+            margin-left: auto;
+        }
+        .runs-decision {
+            color: #1a6b5a;
+            font-size: 0.6875rem;
+        }
+        .runs-meta {
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            color: #6b7c8f;
+            font-size: 0.625rem;
+            font-variant-numeric: tabular-nums;
+        }
+        .runs-meta-sep { color: #9ca3af; }
+        .runs-transcript-btn {
+            color: #1a6b5a;
+            opacity: 0.7;
+            padding: 0 0.25rem;
+        }
+        .runs-transcript-btn:hover { opacity: 1; }
+        .runs-dot-kv {
+            background: transparent;
+            border: 1px solid #9ca3af;
+        }
+        .runs-nodes {
+            margin: 0.125rem 0 0.25rem 0;
+            padding-left: 1.25rem;
+            border-left: 1px solid #e1e4e8;
+            margin-left: 3px;
+        }
+        .runs-message {
+            padding-left: 24px;
+            font-size: 0.6875rem;
+            color: #374a5e;
+            line-height: 1.35;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .runs-artifacts {
+            padding-left: 24px;
+            font-size: 0.625rem;
+            color: #6b7c8f;
+            overflow-wrap: anywhere;
+        }
+
+        /* Tree connector lines (legacy, still used by other tree views) */
+        .tree-children {
+            margin-left: 1rem;
+            padding-left: 0.5rem;
+        }
+        .tree-child {
+            position: relative;
+            padding-left: 0.75rem;
+        }
+        /* Vertical line: full height, clipped at first-row center for last child */
+        .tree-child::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            border-left: 2px solid #e1e4e8;
+        }
+        .tree-child:last-child::before {
+            bottom: auto;
+            height: 12px;
+        }
+        /* Horizontal connector: always at first-row center (rows are 24px) */
+        .tree-child::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 12px;
+            width: 0.75rem;
+            border-top: 2px solid #e1e4e8;
+        }
+
+        /* Chevron: sits inline in summary, same color as tree lines */
+        details > summary .chevron {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+            color: #9ca3af;
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+        }
+        details[open] > summary .chevron {
+            transform: rotate(90deg);
+        }
+
+        /* Related runs row: workflow pill + hover slug */
+        .run-row-pill {
+            font-size: 10px;
+            color: #6b7c8f;
+            background: #f0f2f5;
+            padding: 1px 7px;
+            border-radius: 8px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        /* Graph canvases */
+        .graph-canvas {
+            width: 100%;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.5rem;
+            background: #ffffff;
+        }
+        #workflow-compound-diagram.graph-canvas { min-height: 0; }
+        #compound-diagram.graph-canvas { min-height: 0; }
+        @media (max-width: 640px) {
+            .graph-canvas { min-height: 16rem; }
+        }
+
+        /* Prose / markdown rendering */
+        .prose { color: #1b2631; }
+        .prose > * + * { margin-top: 0.75rem; }
+        .prose h1 { font-family: 'Fraunces', serif; font-size: 1.25rem; font-weight: 500; }
+        .prose h2 { font-family: 'Fraunces', serif; font-size: 1.125rem; font-weight: 500; }
+        .prose h3 { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 500; }
+        .prose p { margin: 0; }
+        .prose ul,
+        .prose ol { padding-left: 1.25rem; }
+        .prose li + li { margin-top: 0.35rem; }
+        .prose blockquote {
+            border-left: 3px solid #e1e4e8;
+            padding-left: 0.75rem;
+            color: #6b7c8f;
+        }
+        .prose code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background: #eef1f5;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.25rem;
+        }
+        .prose pre {
+            background: #f6f8fa;
+            color: #374a5e;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e1e4e8;
+            overflow: auto;
+        }
+        .prose pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+        .prose table { width: 100%; border-collapse: collapse; }
+        .prose th,
+        .prose td { border: 1px solid #e1e4e8; padding: 0.5rem; text-align: left; }
+        .prose th { background: #f6f8fa; font-weight: 600; }
+
+        .markdown { color: #1b2631; }
+        .markdown > * + * { margin-top: 0.5rem; }
+        .markdown p { margin: 0; }
+        .markdown ul,
+        .markdown ol { padding-left: 1.25rem; }
+        .markdown li + li { margin-top: 0.35rem; }
+        .markdown blockquote {
+            border-left: 3px solid #e1e4e8;
+            padding-left: 0.75rem;
+            color: #6b7c8f;
+        }
+        /* Tab bar */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e1e4e8;
+        }
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #6b7c8f;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color 0.15s, border-color 0.15s;
+            background: none;
+            cursor: pointer;
+        }
+        .tab-btn:hover { color: #1b2631; }
+        .tab-btn.active {
+            color: #1a6b5a;
+            border-bottom-color: #1a6b5a;
+        }
+
+        /* Accordion */
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+        .accordion-header:hover { background-color: #f6f8fa; }
+        .accordion-header .chevron {
+            transition: transform 0.2s;
+            width: 1rem;
+            height: 1rem;
+            flex-shrink: 0;
+            color: #6b7c8f;
+        }
+        /* Accordion body expand/collapse handled by Alpine x-show */
+
+        .markdown code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background: #eef1f5;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.25rem;
+        }
+        .markdown pre {
+            background: #f6f8fa;
+            color: #374a5e;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e1e4e8;
+            overflow: auto;
+        }
+        .markdown pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        /* Graph node metric row */
+        .node-metrics {
+            font-size: 11px;
+            color: #1b2631;
+            font-variant-numeric: tabular-nums;
+            border-top: 1px dashed #d0d7de;
+            margin-top: 6px;
+            padding-top: 4px;
+        }
+        .node-metrics .sep { color: #d0d7de; margin: 0 6px; }
+        .node-metrics .sum-prefix { color: #6b7c8f; margin-right: 4px; }
+        .node-metrics-row.rollup { color: #1b2631; }
+        .node-metrics-row.own { color: #6b7c8f; font-size: 10px; }
+
+        /* ELK graph status animations */
+        @keyframes node-pulse {
+            0%, 100% { stroke-opacity: 1; }
+            50% { stroke-opacity: 0.4; }
+        }
+        .graph-node[data-status="running"] rect {
+            animation: node-pulse 2s ease-in-out infinite;
+        }
+        .graph-node[data-status="completed"] rect {
+            transition: fill 400ms ease, stroke 400ms ease;
+        }
+        .graph-node[data-status="failed"] rect {
+            filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.4));
+        }
+        .graph-node[data-status="awaiting_approval"] rect {
+            animation: node-pulse 2s ease-in-out infinite;
+        }
+        @keyframes node-flash {
+            0% { filter: drop-shadow(0 0 0px transparent); }
+            30% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6)); }
+            100% { filter: drop-shadow(0 0 0px transparent); }
+        }
+        .graph-node.status-transition rect {
+            animation: node-flash 600ms ease-out;
+        }
+
+        /* Bottom sheet drag handle */
+        .bottom-sheet-drag {
+            width: 36px;
+            height: 4px;
+            background: #d1d5db;
+            border-radius: 2px;
+            margin: 8px auto;
+        }
+        @keyframes flash-bg {
+            0%   { background-color: rgba(26,107,90,0.15); }
+            100% { background-color: transparent; }
+        }
+        .flash-highlight { animation: flash-bg 1.5s ease-out; }
+
+        /* Copy button for KV values */
+        .kv-copy-btn {
+            font-size: 0.6875rem;
+            color: #6b7c8f;
+            background: none;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.25rem;
+            padding: 0.125rem 0.375rem;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .kv-copy-btn:hover { color: #1b2631; border-color: #1b2631; }
+
+        /* Transcript layout */
+        .transcript-row {
+            border-top: 1px solid #e1e4e8;
+            padding: 0.5rem 0.25rem;
+        }
+        .transcript-row:first-child { border-top: none; }
+
+        .transcript-row-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+        }
+
+        .transcript-chip {
+            display: inline-block;
+            padding: 0 0.375rem;
+            border-radius: 0.25rem;
+            font-family: "DM Sans", sans-serif;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            background: #eef1f5;
+            color: #6b7c8f;
+        }
+        .transcript-chip-asst   { background: #d4ece8; color: #1a6b5a; }
+        .transcript-chip-user   { background: #dbeafe; color: #1e40af; }
+        .transcript-chip-sys    { background: #e5e7eb; color: #374151; }
+        .transcript-chip-prompt { background: #e0e7ff; color: #3730a3; }
+        .transcript-chip-tool   { background: #f3f4f6; color: #4b5563; }
+
+        .transcript-time {
+            color: #6b7c8f;
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Session-id pill — click-to-copy, hover-to-tooltip. */
+        .session-pill {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 10px;
+            color: #6b7c8f;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+            padding: 0 0.25rem;
+            line-height: 1.4;
+            cursor: pointer;
+            transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+        .session-pill:hover {
+            background: #eef1f5;
+            border-color: #d8dee6;
+            color: #1b2631;
+        }
+        .session-pill:focus-visible {
+            outline: 2px solid #1a6b5a;
+            outline-offset: 1px;
+        }
+        .session-pill--resume { color: #b45309; }
+        .session-pill--copied,
+        .session-pill--copied:hover {
+            background: #1a6b5a;
+            border-color: #1a6b5a;
+            color: #ffffff;
+            font-family: "DM Sans", sans-serif;
+        }
+        .transcript-tool-name {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 500;
+            color: #1b2631;
+        }
+        .transcript-tool-summary {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #374a5e;
+            font-size: 0.75rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 40rem;
+        }
+
+        .transcript-row-body { margin-top: 0.375rem; }
+
+        .transcript-tool-prelude {
+            font-style: italic;
+            color: #374a5e;
+            font-size: 0.8125rem;
+            margin: 0 0 0.5rem 0;
+            line-height: 1.4;
+        }
+        .transcript-tool-prelude em { font-style: italic; }
+
+        /* Per-tool raw toggle */
+        .transcript-tool-raw { margin-top: 0.5rem; }
+        .transcript-tool-raw > summary {
+            cursor: pointer;
+            color: #6b7c8f;
+            font-size: 10px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            user-select: none;
+            list-style: none;
+            display: inline-block;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            transition: background 0.1s, color 0.1s;
+        }
+        .transcript-tool-raw > summary::marker,
+        .transcript-tool-raw > summary::-webkit-details-marker { display: none; }
+        .transcript-tool-raw > summary::before { content: "▸ "; }
+        .transcript-tool-raw[open] > summary::before { content: "▾ "; }
+        .transcript-tool-raw > summary:hover { color: #1b2631; background: #f3f4f6; }
+        .transcript-tool-raw-body { margin-top: 0.25rem; }
+        .transcript-tool-raw-label {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 10px;
+            color: #6b7c8f;
+            margin-top: 0.25rem;
+        }
+        .transcript-tool-raw-pre {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 11px;
+            background: #f6f8fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.25rem;
+            padding: 0.375rem 0.5rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #374a5e;
+        }
+        .transcript-tool-raw-pre-error {
+            background: #fee2e2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        /* Transcript drawer — absolute-positioned overlay inside the Runs
+         * column. Covers the run tree when open; the micro graph and the
+         * compound graph above stay visible. */
+        .transcript-drawer-panel {
+            position: absolute;
+            inset: 0;
+            background: white;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.5rem;
+            box-shadow: -4px 0 16px rgba(27, 38, 49, 0.14);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .transcript-drawer-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e1e4e8;
+            flex: 0 0 auto;
+        }
+        .transcript-drawer-body {
+            flex: 1 1 auto;
+            overflow: auto;
+            padding: 0.75rem 1rem;
+        }
+
+        .transcript-tool-section { margin-top: 0.5rem; }
+        .transcript-tool-section:first-child { margin-top: 0; }
+        .transcript-tool-section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b7c8f;
+            margin-bottom: 0.25rem;
+        }
+        .transcript-tool-section-error .transcript-tool-section-label { color: #b91c1c; }
+
+        /* 12-line fold clip */
+        .transcript-fold-clip {
+            max-height: calc(1.4em * 12);
+            overflow: hidden;
+            mask-image: linear-gradient(to bottom, black calc(100% - 1.5em), transparent);
+            -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.5em), transparent);
+        }
+
+        /* Prompts and messages share the same content styling */
+        .transcript-item-content {
+            font-size: 0.8125rem;
+            line-height: 1.5;
+            color: #1b2631;
+        }
+        .transcript-item-content p { margin: 0.25em 0; }
+        .transcript-item-content h1,
+        .transcript-item-content h2,
+        .transcript-item-content h3,
+        .transcript-item-content h4,
+        .transcript-item-content h5,
+        .transcript-item-content h6 {
+            font-size: 1em;
+            font-weight: 600;
+            margin: 0.5em 0 0.25em 0;
+        }
+        .transcript-item-content code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85em;
+            background: #f3f4f6;
+            padding: 0.1em 0.25em;
+            border-radius: 0.25em;
+        }
+        .transcript-item-content pre {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.8125rem;
+            background: #ffffff;
+            border: 1px solid #e1e4e8;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            overflow-x: auto;
+        }
+        .transcript-item-content ul,
+        .transcript-item-content ol { margin: 0.25em 0 0.25em 1.5em; padding: 0; }
+        .transcript-item-content li { margin: 0.1em 0; }
+        .transcript-item-content blockquote {
+            margin: 0.25em 0;
+            padding-left: 0.75em;
+            border-left: 3px solid #d1d5db;
+            color: #374a5e;
+        }
+
+        /* Compact transcript (inside execution tree / node detail panel) */
+        .transcript-compact .transcript-row { padding: 0.375rem 0.25rem; }
+        .transcript-compact .transcript-row-body { margin-top: 0.25rem; }
+        .transcript-compact .transcript-item-content { font-size: 0.75rem; }
+    </style>
+    <link rel="stylesheet" href="{{.BasePath}}/static/css/run_view.css">
+</head>
+{{end}}

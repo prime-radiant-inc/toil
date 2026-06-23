@@ -1,0 +1,48 @@
+{{define "run-kv-panel"}}
+<div data-run-kv-panel="{{.RunID}}" class="p-3 space-y-3">
+    {{if not (or .KVs .Stories)}}
+    <div class="text-muted text-xs">No {{.Title | lower}} recorded for this run.</div>
+    {{end}}
+    {{if .KVs}}
+    <div class="divide-y divide-edge">
+        {{range .KVs}}
+        <div class="py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-muted font-mono mb-1">{{.Key}}</div>
+            <div x-data="foldable(15)" x-init="$nextTick(() => measure())" class="relative">
+                <div x-ref="content" :class="overflows && !expanded && 'transcript-fold-clip'">
+                    {{if .HTML}}
+                    <div class="prose max-w-none text-sm">{{.HTML}}</div>
+                    {{else}}
+                    <div class="text-sm text-ink whitespace-pre-wrap break-words">{{.Value}}</div>
+                    {{end}}
+                </div>
+                <button x-show="overflows && !expanded" x-cloak
+                        class="text-accent text-xs mt-1 hover:underline"
+                        @click="expanded = true"
+                        x-text="'Show ' + extraLines + ' more lines'"></button>
+                <button x-show="overflows && expanded" x-cloak
+                        class="text-accent text-xs mt-1 hover:underline"
+                        @click="collapse()">Show less</button>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+    {{if .Stories}}
+    <div>
+        <div class="text-[10px] font-semibold uppercase tracking-wide text-muted font-mono mb-2">Stories</div>
+        <div class="space-y-2">
+            {{range .Stories}}
+            <div class="border border-edge rounded p-2">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-medium text-sm text-ink">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</span>
+                    {{if .Status}}<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide {{storyStatusClass .Status}}">{{.Status}}</span>{{end}}
+                </div>
+                {{if .BodyHTML}}<div class="prose max-w-none text-xs">{{.BodyHTML}}</div>{{end}}
+            </div>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}

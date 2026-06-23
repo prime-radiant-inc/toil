@@ -1,0 +1,21 @@
+id: forced_review_downstream
+name: Forced Review — Downstream Reformatting Test
+workflow_id: forced_review_test_downstream
+auto_approve: true
+inputs:
+  task:
+    id: task-cli
+    name: "Wire CLI to renderer and write output"
+    acceptance_criteria:
+      - "CLI runs end-to-end, reading from stdin and writing to stdout"
+      - "Output matches the expected HTML for documented Markdown subset"
+      - "TestCLIRendersListWithNewlines passes"
+    files:
+      - cmd/mdrender/main.go
+      - internal/cli/run.go
+      - tests/cli_test.go
+    guidance: |
+      Wire stdin->renderer->stdout. The renderer is in internal/render.
+    interfaces: ""
+    steps: []
+    depends_on: []

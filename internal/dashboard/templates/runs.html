@@ -1,0 +1,68 @@
+{{template "layout-start" .}}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="heading-display text-2xl">Runs</h1>
+            <p class="text-sm text-muted">Workflow executions grouped by execution group.</p>
+        </div>
+    </div>
+
+    {{if or .Groups .StatusFilter}}
+    <div x-data="{query: ''}">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+            <div class="flex gap-1">
+                {{$sf := .StatusFilter}}
+                <a href="{{.BasePath}}/runs" class="px-3 py-1 rounded-full text-xs font-medium transition-colors {{if not $sf}}bg-accent text-white{{else}}bg-edge-light text-ink-light hover:bg-edge{{end}}">All</a>
+                <a href="{{.BasePath}}/runs?status=running" class="px-3 py-1 rounded-full text-xs font-medium transition-colors {{if eq $sf "running"}}bg-blue-600 text-white{{else}}bg-edge-light text-ink-light hover:bg-edge{{end}}">Running</a>
+                <a href="{{.BasePath}}/runs?status=failed" class="px-3 py-1 rounded-full text-xs font-medium transition-colors {{if eq $sf "failed"}}bg-red-600 text-white{{else}}bg-edge-light text-ink-light hover:bg-edge{{end}}">Failed</a>
+                <a href="{{.BasePath}}/runs?status=completed" class="px-3 py-1 rounded-full text-xs font-medium transition-colors {{if eq $sf "completed"}}bg-green-600 text-white{{else}}bg-edge-light text-ink-light hover:bg-edge{{end}}">Completed</a>
+                <a href="{{.BasePath}}/runs?status=paused" class="px-3 py-1 rounded-full text-xs font-medium transition-colors {{if eq $sf "paused"}}bg-amber-600 text-white{{else}}bg-edge-light text-ink-light hover:bg-edge{{end}}">Paused</a>
+            </div>
+            <input id="filter-runs" type="text" class="input-field max-w-xs" placeholder="Filter runs..." x-model="query">
+        </div>
+        <div class="card">
+            <div class="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 border-b border-edge-light bg-surface section-label rounded-t-lg">
+                <div class="col-span-5">Run · Title</div>
+                <div class="col-span-1">Status</div>
+                <div class="col-span-2">Started</div>
+                <div class="col-span-4 text-right">Metrics</div>
+            </div>
+            <div class="divide-y divide-edge-light">
+                {{range .Groups}}
+                <div class="px-4 py-3 hover:bg-edge-light transition-colors" x-show="!query || $el.textContent.toLowerCase().includes(query.toLowerCase())">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center text-sm">
+                        <div class="col-span-1 lg:col-span-5 min-w-0">
+                            <a class="font-mono text-xs text-accent hover:underline truncate" href="{{$.BasePath}}/runs/{{.Root.ID}}">{{.Root.ID}}</a>
+                            <div class="font-medium text-ink truncate">{{.Root.Title}}</div>
+                            {{if .Root.Description}}<div class="text-xs text-muted truncate">{{.Root.Description}}</div>{{end}}
+                            <div class="text-xs text-muted truncate">{{.Root.WorkflowID}}</div>
+                        </div>
+                        <div class="col-span-1 lg:col-span-1">
+                            <span class="px-2 py-0.5 rounded-full text-xs {{statusClass .GroupStatus}}">{{humanizeStatus .GroupStatus}}</span>
+                        </div>
+                        <div class="col-span-1 lg:col-span-2 text-ink-light" title="{{formatTime .Root.StartedAt}}">{{timeAgo .Root.StartedAt}}</div>
+                        <div class="col-span-1 lg:col-span-4 text-right text-ink-light">
+                            <div data-run-total-for="{{.Root.ID}}">{{formatMetrics .Root.RunTotal}}</div>
+                            <div class="text-xs text-muted">{{.TotalRuns}} total · {{.ActiveRuns}} active</div>
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{else}}
+    <div class="card">
+        <div class="px-4 py-8 text-center">
+            {{if .StatusFilter}}
+            <div class="text-sm text-muted">No execution groups with {{.StatusFilter}} runs.</div>
+            <a href="{{.BasePath}}/runs" class="inline-block mt-2 text-sm text-accent hover:underline">&larr; Show all</a>
+            {{else}}
+            <div class="text-sm text-muted">No runs yet.</div>
+            <a href="{{.BasePath}}/workflows" class="inline-block mt-2 text-sm text-accent hover:underline">Start a workflow &rarr;</a>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</div>
+{{template "layout-end" .}}

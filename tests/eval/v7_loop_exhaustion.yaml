@@ -1,0 +1,81 @@
+id: v7_loop_exhaustion
+name: v7 Loop Exhaustion — Positive Coverage for _loop_exhausted Routing
+workflow_id: implement_spec
+# Forcing-eval for the v7 `_loop_exhausted` → `declare_*_stuck` cascade.
+#
+# ORIGINAL DESIGN INTENT (no longer accurate — see below):
+# Drive `verify_code_meets_acceptance_criteria` (in implement_task.yaml)
+# past `max_loop_iterations=4` via contradictory ACs and route via
+# `_loop_exhausted` to `resolve_review_dispute` (the judge).
+#
+# WHAT ACTUALLY HAPPENS (observed 2026-05-19 in run crest-onyx-mist;
+# see docs/testing/2026-05-19-eval-pass-findings.md):
+# The implement_task verifier converges on `approved` within 1-3
+# iterations. The agent writes self-consistent code+tests for a
+# subset of the contradictory ACs and the verifier accepts that
+# self-consistent subset. The judge is NEVER dispatched.
+#
+# The loop that DOES exhaust is verify_integration.run_e2e_tests —
+# the end-to-end tests against the built binary catch the
+# contradictions that unit tests miss (binary can't satisfy
+# stdout-XOR-stderr at runtime, even when each test file can be
+# made consistent in isolation). After 3 debug_merge attempts the
+# loop exhausts and routes `_loop_exhausted` to declare_verify_stuck
+# (terminal). The parent integrate_component completes, the
+# implement_spec run completes, and the eval's `go test` succeeds
+# on the partial committed code.
+#
+# So this eval is positive coverage for:
+#   - verify_integration._loop_exhausted → declare_verify_stuck
+#     (verify_integration.yaml:350-360)
+#   - declare_verify_stuck "soft fail" propagating as integrate_component
+#     all_succeeded (added in commit 88e2f5a)
+#   - debug_merge's own loop running cleanly across multiple attempts
+#
+# NOT validated by this eval:
+#   - implement_task's inner verify-AC → judge path
+#   - The judge (resolve_review_dispute) node — never dispatched
+#   - Engine fixes in d86a484, b777022, 24efa23 (judge input plumbing)
+#
+# Cost expectation: ~$5-12 and ~18-20 min per run. The spec is small
+# (one component) and the per-task agents converge quickly; what
+# burns time is the 3 debug_merge subworkflows inside verify_integration.
+#
+# CAVEAT: see Finding 1 in docs/testing/2026-05-19-eval-pass-findings.md
+# — eval.json reports status=passed even though verify_integration
+# exhausted. Don't use this eval's `passed` result alone as proof
+# that the workflow worked; cross-reference events.jsonl for
+# `_loop_exhausted` routing.
+auto_approve: true
+approvals:
+  human_review:
+    decision: approved
+    message: "Plan approved."
+inputs:
+  spec: |
+    # Echo CLI
+
+    A trivial command-line tool that prints its arguments back. The
+    CLI takes any number of positional arguments and prints them.
+    Implemented in Go as a single `main` package.
+  stories:
+    - id: story-1
+      title: Print arguments
+      description: User can invoke the CLI with arguments and see them printed.
+      # Contradictory ACs: criteria 1+2 cannot both be satisfied
+      # (one demands a trailing newline, the other forbids it).
+      # Criteria 3+4 contradict on the no-args behavior (stdout vs stderr,
+      # exit 0 vs exit 1). Criteria 5+6 contradict on streams.
+      # The verifier (verify_code_meets_acceptance_criteria) cannot
+      # approve any implementation — every iteration finds some
+      # criterion violated. This drives the verify→write_code→verify
+      # loop past max_loop_iterations: 4 in implement_task.yaml.
+      acceptance_criteria:
+        - "`echo foo bar` must print exactly `foo bar\\n` to stdout (trailing newline)"
+        - "The output of `echo foo bar` must NOT contain any newline character (no trailing \\n)"
+        - "`echo` (no args) must print `(no args)\\n` to stdout and exit with code 0"
+        - "`echo` (no args) must print `(no args)\\n` to stderr and exit with code 1"
+        - "All output goes to stdout; nothing is written to stderr"
+        - "All output goes to stderr; nothing is written to stdout"
+verify:
+  command: "go test -timeout 30s ./..."

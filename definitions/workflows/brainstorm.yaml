@@ -1,0 +1,133 @@
+id: brainstorm
+name: Brainstorm
+version: 2
+description: >
+  Interview user through iterative dialogue to produce a spec and story cards.
+interview: on_issue
+inputs:
+  idea: string
+  context: string
+  project_dir: string
+input_schema:
+  context:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: brainstormer
+    kind: role
+    runner: serf
+    # Top-level workflow; exhaustion means the design dialogue didn't
+    # converge within max_loop_iterations. No parent workflow exists to
+    # escalate to — the operator should see a fatal error and decide
+    # whether to extend the limit or revisit the idea.
+    loop_exhaustion: fatal
+    prompt: |
+      # Brainstormer
+
+      Turn ideas into designs and story cards through iterative dialogue.
+
+      ## Process
+
+      1. Check project context (existing files, docs, recent work)
+      2. Ask questions ONE AT A TIME (prefer multiple choice) to refine the idea
+         - Focus on: purpose, constraints, success criteria, target users
+      3. Propose 2-3 approaches with tradeoffs; lead with your recommendation
+      4. Present the chosen design in small sections (200-300 words each)
+         - After each section, check: "Does this look right so far?"
+         - Cover: architecture, components, data flow, error handling, testing
+      5. Revise as needed until the design is solid
+
+      ## Principles
+
+      - **One question at a time** — do not overwhelm the user
+      - **YAGNI ruthlessly** — remove unnecessary features from all designs
+      - **Incremental validation** — present design in sections, validate each
+
+      ## Final Output
+
+      Your final output must include:
+      1. A spec document (in `data.spec`) with the complete design
+      2. A list of story cards (in `data.stories`) with fields:
+         - id, title, description, acceptance_criteria (list of testable statements)
+
+      Story acceptance criteria must be specific and testable — not vague goals.
+
+      <!-- LOCAL -->
+      ## Output Format
+
+      When you need more information:
+      ```json
+      {
+        "decision": "needs_info",
+        "message": "Your question (ONE question only).",
+        "data": {},
+        "artifacts": []
+      }
+      ```
+
+      When the design is ready for review:
+      ```json
+      {
+        "decision": "design_ready",
+        "message": "Summary of the design.",
+        "data": {
+          "spec": "Complete spec document content",
+          "stories": [
+            {
+              "id": "story-1",
+              "title": "...",
+              "description": "...",
+              "acceptance_criteria": ["testable statement"]
+            }
+          ]
+        },
+        "artifacts": []
+      }
+      ```
+      <!-- /LOCAL -->
+    inputs:
+      idea: "${workflow_input.idea!}"
+      context: "${workflow_input.context}"
+    decisions: [needs_info, design_ready]
+
+  - id: human_clarify
+    kind: human
+    runner: human
+    gate: required
+    # Top-level workflow; exhaustion means the human didn't clarify within
+    # max_loop_iterations. No parent to escalate to — fail fatally so the
+    # operator can decide next steps.
+    loop_exhaustion: fatal
+    prompt: |
+      The brainstormer needs more information. Provide clarification.
+    decisions: [clarified]
+
+  - id: human_review
+    kind: human
+    runner: human
+    gate: required
+    # Top-level workflow; exhaustion means the human review loop didn't
+    # converge — the design kept being sent back for changes. Fail fatally
+    # so the operator sees a clear error rather than silent termination.
+    loop_exhaustion: fatal
+    prompt: |
+      Review the proposed design. Approve it or request changes.
+    decisions: [approved, changes_requested]
+
+edges:
+  - from: brainstormer
+    to: human_clarify
+    when: needs_info
+  - from: human_clarify
+    to: brainstormer
+    when: clarified
+  - from: brainstormer
+    to: human_review
+    when: design_ready
+  - from: human_review
+    to: brainstormer
+    when: changes_requested
+limits:
+  max_loop_iterations: 10

@@ -1,0 +1,166 @@
+id: interview
+name: Agent Interview
+version: 1
+description: >
+  Conducts a single post-run interview by looping between an interviewer
+  and an interviewee (the original agent session, resumed).
+interview: never
+inputs:
+  node_id: string
+  role_id: string
+  session_id: string
+  outcome: string
+  attempts: int
+  run_context: string
+input_schema:
+  run_context:
+    optional: true
+nodes:
+  - id: interviewer
+    kind: role
+    runner: serf
+    context: full
+    # Top-level workflow; exhaustion means the interview loop didn't
+    # complete within max_loop_iterations=10. No parent to escalate to —
+    # fail fatally so the operator sees a clear error rather than a silent
+    # incomplete transcript.
+    loop_exhaustion: fatal
+    prompt: |
+      # Interviewer
+
+      Conduct a post-run interview with the agent that played the
+      ${input.role_id} role (node ${input.node_id}).
+
+      Outcome: ${input.outcome}
+      Attempts: ${input.attempts}
+
+      ## Interview Style
+
+      - Ask one question at a time
+      - Follow up on interesting threads before moving on
+      - Reference run context (failures, retries, durations) — don't ask what
+        the event log already answers; probe the *why*
+      - Adapt questions to the interviewee's job and outcome
+
+      ## Core Questions
+
+      **For all roles:**
+      - What was harder than expected?
+      - What information did you wish you'd had at the start?
+      - What codebase patterns should future agents know about?
+      - What workarounds did you use? What was the underlying problem?
+      - What would you change about the instructions you were given?
+
+      **For failed or retried runs, additionally:**
+      - What was the actual blocker?
+      - At what point did you realize things weren't working?
+      - What would have helped you succeed?
+      - Was the task well-defined or ambiguous?
+
+      **Cross-node probing:**
+      - Did inputs from prior steps cause problems?
+      - Was the plan/spec clear and actionable?
+      - Was the review feedback accurate and helpful?
+
+      ## When to Follow Up vs. Move On
+
+      Follow up when the interviewee mentions:
+      - A workaround (probe what the real fix should be)
+      - Friction with a prior node's output (probe cross-node attribution)
+      - Something that "almost" failed (probe fragility)
+      - Vague statements like "it was confusing" (get specifics)
+
+      Complete the interview when you've covered the core themes, follow-ups
+      yield diminishing returns, and you have enough evidence for 2-3 learnings.
+
+      <!-- LOCAL -->
+      ## Output Format
+
+      Your `message` field is sent directly to the interviewee as their input.
+      Put your actual question in `message`, NOT in `data`.
+
+      While interviewing:
+      ```json
+      {
+        "decision": "follow_up",
+        "message": "Your actual question for the interviewee goes here.",
+        "data": {},
+        "artifacts": []
+      }
+      ```
+
+      When complete, produce a structured summary:
+      ```json
+      {
+        "decision": "interview_complete",
+        "message": "One-sentence summary of findings.",
+        "data": {
+          "learnings": [
+            {
+              "source_node": "write_code",
+              "target_node": "write_tests",
+              "category": "project | generalizable",
+              "type": "prompt | skill",
+              "detail": "Concrete description of the learning",
+              "evidence": "Direct quote or reference from the interview"
+            }
+          ]
+        },
+        "artifacts": []
+      }
+      ```
+
+      Each learning must include: `source_node`, `target_node`, `category`
+      (project/generalizable), `type` (prompt/skill), `detail`, and `evidence`.
+      <!-- /LOCAL -->
+    inputs:
+      run_context: "${workflow_input.run_context}"
+    decisions: [follow_up, interview_complete]
+    outputs_schema:
+      type: object
+      required: [learnings]
+      properties:
+        learnings:
+          type: array
+          items:
+            type: object
+            required: [source_node, target_node, category, type, detail, evidence]
+            properties:
+              source_node: { type: string }
+              target_node: { type: string }
+              category:
+                type: string
+                enum: [project, generalizable]
+              type:
+                type: string
+                enum: [prompt, skill]
+              detail: { type: string }
+              evidence: { type: string }
+
+  - id: interviewee
+    kind: role
+    runner: serf
+    context: full
+    session_id: "${input.session_id}"
+    prompt_on_resume: true
+    # Top-level workflow; exhaustion means the interviewee kept responding
+    # without the interviewer concluding. No parent to escalate to — fail
+    # fatally so the operator can review the partial transcript and decide
+    # whether to extend the limit.
+    loop_exhaustion: fatal
+    prompt: |
+      You are being interviewed about your recent work.
+      <!-- LOCAL -->
+      Answer the interviewer's question honestly and specifically. Reference
+      concrete examples from your session when possible.
+      <!-- /LOCAL -->
+    decisions: [answered]
+
+edges:
+  - from: interviewer
+    to: interviewee
+    when: follow_up
+  - from: interviewee
+    to: interviewer
+limits:
+  max_loop_iterations: 10

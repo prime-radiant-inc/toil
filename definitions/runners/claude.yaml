@@ -1,0 +1,4 @@
+id: claude
+type: claude
+command: claude
+resume: true

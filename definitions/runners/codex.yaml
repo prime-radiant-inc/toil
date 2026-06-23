@@ -1,0 +1,9 @@
+id: codex
+type: codex
+command: codex
+args:
+  - -m
+  - ${CODEX_MODEL:-gpt-5.4}
+  - -c
+  - reasoning_effort="${CODEX_REASONING_EFFORT:-medium}"
+resume: true

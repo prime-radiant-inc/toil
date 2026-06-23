@@ -1,0 +1,68 @@
+{{define "timeline-entries"}}
+{{if not .}}<div class="text-muted text-xs p-2">No events yet.</div>{{end}}
+<div class="space-y-px">
+    {{range .}}{{template "timeline-entry" .}}{{end}}
+</div>
+{{end}}
+
+{{define "timeline-entry"}}
+{{if eq .Kind "turn"}}
+<div class="text-[11px] leading-tight flex items-start gap-1 py-0.5">
+    <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums" title="{{.Timestamp.Local.Format "2006-01-02 15:04:05"}}">{{.Timestamp.Local.Format "15:04"}}</span>
+    <span class="text-accent font-medium">{{.NodeID}}</span>
+    {{if .Message}}<span class="text-ink-light truncate">{{.Message}}</span>{{end}}
+    {{if and .Decision (ne .Decision "default")}}<span class="text-accent ml-auto flex-shrink-0">&rarr; {{.Decision}}</span>{{end}}
+</div>
+{{else if eq .Kind "node_event"}}
+<div class="text-[11px] leading-tight flex items-start gap-1 py-0.5 text-muted">
+    <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums" title="{{.Timestamp.Local.Format "2006-01-02 15:04:05"}}">{{.Timestamp.Local.Format "15:04"}}</span>
+    <span class="px-1.5 py-0 rounded-full text-[9px] font-medium {{.BadgeClass}}">{{.TypeLabel}}</span>
+    <span class="font-mono">{{.NodeID}}</span>
+    {{if and .Decision (ne .Decision "default")}}<span class="text-accent">&rarr; {{.Decision}}</span>{{end}}
+    {{if gt .DurationMs 0}}<span class="text-muted/60 ml-auto">({{printf "%.1fs" (divFloat .DurationMs 1000.0)}})</span>{{end}}
+</div>
+{{else if eq .Kind "dispatch"}}
+<div class="text-[11px] leading-tight flex items-start gap-1 py-0.5 text-muted">
+    <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums">{{.Timestamp.Local.Format "15:04"}}</span>
+    <span class="select-none">&rarr;</span>
+    <span>dispatched <a href="{{.BasePath}}/runs/{{.ChildRunID}}" class="text-accent hover:underline">{{.ChildRunID}}</a>{{if .ChildWf}} ({{.ChildWf}}){{end}}</span>
+</div>
+{{else if eq .Kind "completion"}}
+<div class="text-[11px] leading-tight flex items-start gap-1 py-0.5 text-muted">
+    <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums">{{.Timestamp.Local.Format "15:04"}}</span>
+    <span class="select-none">&larr;</span>
+    <span><a href="{{.BasePath}}/runs/{{.ChildRunID}}" class="text-accent hover:underline">{{.ChildRunID}}</a> completed{{if gt .DurationMs 0}} ({{printf "%.1fs" (divFloat .DurationMs 1000.0)}}){{end}}</span>
+</div>
+{{else if eq .Kind "failure"}}
+<div class="text-[11px] leading-tight py-0.5">
+    <div class="flex items-start gap-1">
+        <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums">{{.Timestamp.Local.Format "15:04"}}</span>
+        <span class="px-1.5 py-0 rounded-full text-[9px] font-medium {{.BadgeClass}}">{{.TypeLabel}}</span>
+        {{if .NodeID}}<span class="font-mono text-red-700">{{.NodeID}}</span>{{end}}
+    </div>
+    {{if .ErrorText}}<div class="ml-10 mt-0.5 p-1.5 rounded bg-red-50 border border-red-200 text-[10px] text-red-800 whitespace-pre-wrap font-mono">{{.ErrorText}}</div>{{end}}
+</div>
+{{else if eq .Kind "run_event"}}
+<div class="text-[11px] leading-tight flex items-start gap-1 py-0.5">
+    <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums">{{.Timestamp.Local.Format "15:04"}}</span>
+    <span class="px-1.5 py-0 rounded-full text-[9px] font-medium {{.BadgeClass}}">{{.TypeLabel}}</span>
+    {{if .ParentRunID}}
+        {{if eq .EventType "run_started"}}<span class="text-muted">dispatched by <a href="{{.BasePath}}/runs/{{.ParentRunID}}" class="text-accent hover:underline">{{.ParentRunID}}</a></span>
+        {{else if eq .EventType "run_completed"}}<span class="text-muted">returning to <a href="{{.BasePath}}/runs/{{.ParentRunID}}" class="text-accent hover:underline">{{.ParentRunID}}</a></span>
+        {{else if eq .EventType "run_failed"}}<span class="text-muted">returning to <a href="{{.BasePath}}/runs/{{.ParentRunID}}" class="text-accent hover:underline">{{.ParentRunID}}</a></span>
+        {{end}}
+    {{end}}
+    {{if .ErrorText}}<span class="text-red-700 truncate">{{.ErrorText}}</span>{{end}}
+</div>
+{{else if eq .Kind "approval"}}
+<div class="text-[11px] leading-tight py-0.5">
+    <div class="flex items-start gap-1">
+        <span class="text-[10px] text-muted/60 w-10 flex-shrink-0 tabular-nums">{{.Timestamp.Local.Format "15:04"}}</span>
+        <span class="px-1.5 py-0 rounded-full text-[9px] font-medium {{.BadgeClass}}">{{.TypeLabel}}</span>
+        {{if .NodeID}}<span class="font-mono text-xs text-ink">{{.NodeID}}</span>{{end}}
+        {{if .Decision}}<span class="text-accent ml-auto flex-shrink-0">&rarr; {{.Decision}}</span>{{end}}
+    </div>
+    {{if .ApprovalHTML}}<div class="ml-10 mt-0.5 prose prose-sm max-w-none text-[11px]">{{.ApprovalHTML}}</div>{{end}}
+</div>
+{{end}}
+{{end}}

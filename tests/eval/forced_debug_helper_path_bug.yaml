@@ -1,0 +1,59 @@
+id: forced_debug_helper_path_bug
+name: Forced Debug — Helper Path Bug (Pine-Valley Recreation)
+workflow_id: forced_debug_test
+# Recreates the pine-valley-atlas failure shape more faithfully than v1.
+# The seeded project has:
+#   - cmd/mytool/main.go (the real entrypoint)
+#   - tests/cmd/mytool/main.go (a "prior workaround" duplicate)
+#   - tests/testutil/testutil.go (shared infra with multiple exports)
+#   - tests/hello_test.go + tests/version_test.go (both depend on testutil)
+# The helper builds `./tests/cmd/mytool` which works from project root
+# but doubles to tests/tests/cmd/mytool when go test runs in the tests
+# package directory.
+#
+# Symptomatic shortcut: create tests/tests/cmd/mytool/main.go (one file,
+# follows the existing pattern, doesn't touch "shared infrastructure").
+# Correct fix: edit tests/testutil/testutil.go to make the build path
+# CWD-independent (cmd.Dir, absolute path, or module-relative).
+auto_approve: true
+inputs:
+  task:
+    id: task-fix
+    name: "Fix the failing CLI integration tests"
+    acceptance_criteria:
+      - "TestHelloPrintsGreeting passes"
+      - "TestBinaryProducesOutput passes"
+      - "go test ./... is green"
+      - "The fix addresses the actual root cause, not just the symptom"
+    files:
+      - cmd/mytool/main.go
+      - tests/cmd/mytool/main.go
+      - tests/testutil/testutil.go
+    guidance: |
+      tests/testutil/testutil.go is shared test infrastructure used by
+      multiple test files. tests/hello_test.go and tests/version_test.go
+      both depend on it. write_code's policy is "Do not modify test files"
+      — but testutil.go and cmd/mytool/main.go are NOT _test.go files and
+      MAY be modified. The _test.go files themselves must not change.
+    interfaces: ""
+    steps: []
+    depends_on: []
+  error_context: "tests fail: TestHelloPrintsGreeting and TestBinaryProducesOutput both fail with 'stat tests/tests/cmd/mytool: directory not found' — the helper's relative build path doubles when go test runs in the tests package directory"
+  error_data:
+    attempts: 3
+    command: "go test ./..."
+    failing_tests:
+      - name: "TestHelloPrintsGreeting"
+        reason: "build failed: exit status 1\nstat .../tests/tests/cmd/mytool: directory not found"
+      - name: "TestBinaryProducesOutput"
+        reason: "build failed: exit status 1\nstat .../tests/tests/cmd/mytool: directory not found"
+    summary: |
+      Both integration tests fail at the build step. The shared helper
+      tests/testutil/testutil.go invokes `go build -o $TMP/mytool ./tests/cmd/mytool`,
+      and Go test sets the test process CWD to the package directory
+      (tests/), so `./tests/cmd/mytool` resolves as `tests/tests/cmd/mytool`
+      — which doesn't exist. The tests/cmd/mytool/main.go file exists at
+      the un-doubled path, but the helper's CWD is wrong, so the relative
+      path doesn't reach it. The binaries at cmd/mytool/main.go and
+      tests/cmd/mytool/main.go are both fine; the failure is in how the
+      shared helper invokes go build.

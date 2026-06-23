@@ -1,0 +1,155 @@
+id: implement_spec
+name: Implement Spec
+version: 1
+description: >
+  Main entry point. Takes a spec and optional stories, decomposes into
+  components, builds each concurrently in worktrees, merges sequentially
+  with integration testing after each merge.
+interview: on_issue
+limits:
+  max_loop_iterations: 5
+inputs:
+  spec: string
+  stories: list
+  stories_context: list
+  project_dir: string
+  repo_url: string
+  merge_mode: string
+  secret_keys: list
+  product_slug: string
+input_schema:
+  stories:
+    optional: true
+  stories_context:
+    optional: true
+  repo_url:
+    optional: true
+  merge_mode:
+    optional: true
+  secret_keys:
+    optional: true
+  product_slug:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: scope_components
+    kind: role
+    runner: shell
+    decisions: [scoped]
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/scope_components.sh"
+    inputs:
+      stories: "${workflow_input.stories}"
+      stories_context: "${workflow_input.stories_context}"
+
+  - id: ensure_repo
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/ensure_repo.sh"
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+      repo_url: "${workflow_input.repo_url}"
+    decisions: [ready]
+
+  - id: build_one_component
+    kind: subworkflow
+    workflow: build_component
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+      spec: "${workflow_input.spec!}"
+      stories: "${node.scope_components.data.stories!}"
+      parent_run_id: "${run.id!}"
+      product_slug: "${workflow_input.product_slug}"
+      repo: "${node.ensure_repo.data.bare_repo!}"
+
+  - id: build_components
+    for_each:
+      list: node.scope_components.data.components
+      item: component
+      body: build_one_component
+    decisions: [all_succeeded]
+
+  - id: integrate_one_component
+    kind: subworkflow
+    workflow: integrate_component
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+      spec: "${workflow_input.spec!}"
+      stories: "${node.scope_components.data.stories!}"
+      parent_run_id: "${run.id!}"
+      repo: "${node.ensure_repo.data.bare_repo!}"
+
+  - id: integrate_components
+    for_each:
+      list: node.scope_components.data.components
+      item: component
+      depends_on: depends_on
+      body: integrate_one_component
+    decisions: [all_succeeded]
+
+  - id: check_remote_configured
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/check_remote_configured.sh"
+    inputs:
+      REPO_URL: "${workflow_input.repo_url}"
+    decisions: [push, skip]
+
+  - id: push_to_remote
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/push_to_remote.sh"
+    inputs:
+      REPO_URL: "${workflow_input.repo_url}"
+      PRODUCT_SLUG: "${workflow_input.product_slug}"
+      RUN_ID: "${run.id!}"
+    decisions: [done]
+
+  - id: finalize_remote_branch
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/finalize_remote_branch.sh"
+    inputs:
+      REPO_URL: "${workflow_input.repo_url}"
+      MERGE_MODE: "${workflow_input.merge_mode}"
+      PRODUCT_SLUG: "${workflow_input.product_slug}"
+      RUN_ID: "${run.id!}"
+    decisions: [done]
+
+  - id: cleanup_branch
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/cleanup_branch.sh"
+    inputs:
+      REPO_URL: "${workflow_input.repo_url}"
+      PRODUCT_SLUG: "${workflow_input.product_slug}"
+      RUN_ID: "${run.id!}"
+
+edges:
+  - from: scope_components
+    to: ensure_repo
+    when: scoped
+  - from: ensure_repo
+    to: build_components
+    when: ready
+  - from: build_components
+    to: integrate_components
+    when: all_succeeded
+  - from: integrate_components
+    to: check_remote_configured
+    when: all_succeeded
+  # check_remote_configured with decision "skip" has no outgoing edge,
+  # which intentionally completes the run (no push when no repo_url).
+  - from: check_remote_configured
+    to: push_to_remote
+    when: push
+  - from: push_to_remote
+    to: finalize_remote_branch
+    when: default
+  - from: push_to_remote
+    to: cleanup_branch
+    when: status == 'failed'
+  - from: finalize_remote_branch
+    to: cleanup_branch
+    when: status == 'failed'

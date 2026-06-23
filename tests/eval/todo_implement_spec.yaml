@@ -1,0 +1,69 @@
+id: todo_implement_spec
+name: To-Do CLI Implement Spec
+workflow_id: implement_spec
+# project_dir intentionally unset — eval CLI auto-generates a unique
+# tmpdir per invocation so sequential/concurrent runs can't contaminate
+# each other. Pass --project-dir if you want to pin a specific path.
+auto_approve: true
+approvals:
+  human_review:
+    decision: approved
+    message: "Plan approved."
+inputs:
+  spec: |
+    # To-Do CLI
+
+    A minimal command-line to-do list application in Go.
+
+    ## Commands
+
+    - `todo add <text>` — Add a new task
+    - `todo list` — Show all tasks with status
+    - `todo done <id>` — Mark a task as completed
+    - `todo delete <id>` — Remove a task
+
+    ## Storage
+
+    Tasks persist in `~/.todos.json` as a JSON array. Each task has:
+    - `id` (int, auto-incrementing)
+    - `text` (string)
+    - `done` (bool)
+    - `created_at` (ISO 8601 timestamp)
+
+    ## Behavior
+
+    - `todo list` shows tasks numbered by id, with [x] for done and [ ] for pending
+    - `todo add` with no text prints usage and exits with code 1
+    - `todo done` and `todo delete` with invalid id print an error and exit with code 1
+    - If `~/.todos.json` doesn't exist, `todo list` shows "No tasks." and `todo add` creates it
+  stories:
+    - id: story-1
+      title: Add tasks
+      description: User can add tasks to the list
+      acceptance_criteria:
+        - "`todo add Buy milk` creates a task with text 'Buy milk' and done=false"
+        - "`todo add` with no arguments prints usage to stderr and exits 1"
+        - "Task gets an auto-incrementing integer id"
+        - "Task gets a created_at timestamp in ISO 8601 format"
+        - "~/.todos.json is created if it doesn't exist"
+    - id: story-2
+      title: List tasks
+      description: User can view all tasks
+      acceptance_criteria:
+        - "`todo list` shows each task with id, status checkbox, and text"
+        - "Done tasks show [x], pending show [ ]"
+        - "When no tasks exist, prints 'No tasks.'"
+    - id: story-3
+      title: Complete tasks
+      description: User can mark tasks as done
+      acceptance_criteria:
+        - "`todo done 1` marks task 1 as done=true"
+        - "`todo done 999` prints error about invalid id and exits 1"
+    - id: story-4
+      title: Delete tasks
+      description: User can remove tasks
+      acceptance_criteria:
+        - "`todo delete 1` removes task 1 from the list"
+        - "`todo delete 999` prints error about invalid id and exits 1"
+verify:
+  command: "go test -timeout 60s ./..."

@@ -1,0 +1,37 @@
+id: forced_debug_test
+name: Forced Debug Test (Helper Path Bug)
+version: 1
+description: >
+  Wrapper that seeds a buggy project before invoking the debug subworkflow.
+  Used for A/B testing fix_code prompt variants. The seed step runs inside
+  the workflow so it survives eval CLI's project_dir cleanup.
+inputs:
+  task: object
+  error_context: string
+  error_data: object
+  project_dir: string
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: seed
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/seed.sh"
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+    decisions: [seeded]
+
+  - id: debug
+    kind: subworkflow
+    workflow: debug
+    inputs:
+      task: "${workflow_input.task}"
+      error_context: "${workflow_input.error_context!}"
+      error_data: "${workflow_input.error_data}"
+      project_dir: "${workflow_input.project_dir!}"
+
+edges:
+  - from: seed
+    to: debug
+    when: seeded

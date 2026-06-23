@@ -1,0 +1,17 @@
+# Prerequisite: run tests/semantic_port/setup.sh to clone repos
+id: semantic_port
+name: Semantic Port Tracking
+workflow_id: semantic_port
+auto_approve: true
+project_dir: "${OAG_DIR}"
+inputs:
+  goal: >
+    Intelligently track and port semantic changes from the upstream
+    openai-agents-python repository to our Go implementation. Focus on
+    semantic equivalence, not literal translation. Use Go idioms and
+    respect existing architecture.
+  project_dir: "${PROJECT_DIR}"
+  upstream_dir: "${UPSTREAM_DIR}"
+  ledger_path: "semantic_port/ledger.tsv"
+verify:
+  command: "go test -timeout 60s ./..."

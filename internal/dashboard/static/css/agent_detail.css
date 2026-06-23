@@ -1,0 +1,101 @@
+/* agent_detail.css — diagnostic per-agent view. Plain styling. */
+
+#agent-detail .agent-exec {
+  border-top: 1px solid #e3e8ee;
+  padding: 14px 16px 18px;
+}
+#agent-detail .agent-exec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  color: #1b2631;
+  margin-bottom: 10px;
+}
+#agent-detail .agent-exec-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: #f6f8fa;
+  border: 1px solid #e3e8ee;
+  border-radius: 3px;
+  color: #6b7c8f;
+  font-weight: 600;
+}
+#agent-detail .agent-exec-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: #1b2631;
+}
+#agent-detail .agent-exec-where:hover .agent-exec-step { color: #1a6b5a; text-decoration: underline; }
+#agent-detail .agent-exec-step { font-weight: 600; color: #1b2631; }
+#agent-detail .agent-exec-attempt,
+#agent-detail .agent-exec-resume {
+  color: #6b7c8f;
+  font-size: 11px;
+}
+#agent-detail .agent-exec-attempt::before { content: '· '; color: #c5cdd6; }
+#agent-detail .agent-exec-resume::before { content: '· '; color: #c5cdd6; }
+
+/* Mirror the run_view's wf-widget styling so the [WORKFLOW · run-id]
+   pill looks the same on this diagnostic page. */
+#agent-detail .wf-widget {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 8px;
+  background: #f6f8fa;
+  border: 1px solid #e3e8ee;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+#agent-detail .wf-widget .wf-name { color: #6b7c8f; text-transform: uppercase; font-weight: 600; }
+#agent-detail .wf-widget .wf-sep { color: #e3e8ee; }
+#agent-detail .wf-widget .wf-runid { color: #1a6b5a; font-weight: 600; }
+#agent-detail .agent-exec-time { margin-left: auto; color: #6b7c8f; font-size: 11px; }
+
+#agent-detail .agent-exec-section {
+  margin: 8px 0;
+}
+#agent-detail .agent-exec-section > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7c8f;
+  padding: 4px 0;
+  user-select: none;
+}
+#agent-detail .agent-exec-section > summary:hover { color: #1b2631; }
+
+#agent-detail .agent-exec-prompt {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  background: #f6f8fa;
+  border: 1px solid #e3e8ee;
+  border-radius: 4px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #1b2631;
+}
+
+#agent-detail .agent-exec-output {
+  font-size: 13px;
+}
+#agent-detail .agent-exec-output .muted { color: #6b7c8f; }
+#agent-detail .artifact-list {
+  margin: 2px 0 0 16px;
+  padding: 0;
+}
+#agent-detail .artifact-list li { margin: 2px 0; font-size: 12px; }

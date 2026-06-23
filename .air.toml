@@ -1,0 +1,32 @@
+# Air configuration for toil dev mode.
+# Watches only .go files — template/static changes are served from disk
+# via TOIL_DEV=1 without any rebuild or restart.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/toil ./cmd/toil"
+  bin = "tmp/toil"
+  full_bin = "./tmp/toil serve --addr :8080"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "runs", "vendor", ".git", "docs", "definitions"]
+  exclude_regex = ["_test\\.go$"]
+  delay = 1000
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = 500
+  poll = true
+  poll_interval = 500
+
+[log]
+  main_only = true
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = true
+
+[proxy]
+  enabled = false

@@ -1,0 +1,887 @@
+/*
+ * run_view.css — Styles for the document-style run view (/ui/runs/<id>/v2).
+ *
+ * Scoped under #run-doc to avoid colliding with dashboard layout classes
+ * (e.g. .breadcrumb is also used by the nav chrome).
+ *
+ * Design tokens (match _head.html tailwind config and pebble mockups):
+ *   --rv-accent:   #1a6b5a
+ *   --rv-ink:      #1b2631
+ *   --rv-muted:    #6b7c8f
+ *   --rv-surface:  #f6f8fa
+ *   --rv-line:     #e3e8ee
+ *   --rv-card:     #ffffff
+ *   --rv-good:     #1f9d6e  / --rv-good-bg:  #e7f3ee
+ *   --rv-warn:     #c08a2b  / --rv-warn-bg:  #fbf2e0
+ *   --rv-bad:      #c14a3c  / --rv-bad-bg:   #fdecea
+ *   --rv-plan:     #5b4a8a  / --rv-plan-bg:  #ece8f5
+ *
+ * Role colours are derived algorithmically from the role string via
+ * the OKLCH helper in rolecolor.go / role_color.js — no role names are
+ * enumerated here. The variables below are semantic tokens consumed by
+ * non-role-keyed UI elements (resume id, tool name, parallel header).
+ */
+
+#run-doc {
+  --rv-accent:   #1a6b5a;
+  --rv-ink:      #1b2631;
+  --rv-muted:    #6b7c8f;
+  --rv-surface:  #f6f8fa;
+  --rv-line:     #e3e8ee;
+  --rv-card:     #ffffff;
+  --rv-good:     #1f9d6e;
+  --rv-good-bg:  #e7f3ee;
+  --rv-warn:     #c08a2b;
+  --rv-warn-bg:  #fbf2e0;
+  --rv-bad:      #c14a3c;
+  --rv-bad-bg:   #fdecea;
+  --rv-plan:     #5b4a8a;
+  --rv-plan-bg:  #ece8f5;
+
+  --rv-resume-id:     #c08a2b;
+  --rv-tool-name:     #d96b2a;
+  --rv-parallel-head: #6b7c8f;
+}
+
+/* ===== Brief strip ===== */
+
+#run-doc .brief {
+  background: var(--rv-plan-bg);
+  border-left: 3px solid var(--rv-plan);
+  padding: 12px 14px;
+  border-radius: 0 4px 4px 0;
+  margin: 16px 16px 24px;
+}
+
+#run-doc .brief .brief-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--rv-plan);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+#run-doc .brief .brief-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rv-ink);
+}
+
+#run-doc .brief .brief-body h1,
+#run-doc .brief .brief-body h2,
+#run-doc .brief .brief-body h3 {
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  margin: 12px 0 4px;
+  line-height: 1.25;
+}
+#run-doc .brief .brief-body h1 { font-size: 18px; }
+#run-doc .brief .brief-body h2 { font-size: 15px; }
+#run-doc .brief .brief-body h3 { font-size: 13px; }
+#run-doc .brief .brief-body h1:first-child,
+#run-doc .brief .brief-body h2:first-child,
+#run-doc .brief .brief-body h3:first-child { margin-top: 0; }
+
+#run-doc .brief .brief-body p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+#run-doc .brief .brief-body ul,
+#run-doc .brief .brief-body ol {
+  margin: 4px 0 4px 20px;
+  padding: 0;
+}
+#run-doc .brief .brief-body li {
+  margin: 2px 0;
+}
+
+#run-doc .brief .brief-body pre {
+  background: rgba(91, 74, 138, 0.08);
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0;
+}
+
+#run-doc .brief code {
+  background: rgba(91, 74, 138, 0.08);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+#run-doc .brief .brief-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+#run-doc .brief .brief-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+#run-doc .brief .brief-key {
+  font-family: ui-monospace, monospace;
+  color: #6b7c8f;
+  text-align: right;
+}
+#run-doc .brief .brief-value {
+  color: #1b2631;
+}
+
+/* ===== Doc body wrapper ===== */
+
+#run-doc .doc-body {
+  padding-bottom: 60px;
+}
+
+/* ===== Row (a single agent turn) ===== */
+
+#run-doc .row {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  padding: 10px 16px;
+  position: relative;
+}
+
+#run-doc .row::before {
+  content: '';
+  position: absolute;
+  left: 35px;
+  top: 42px;
+  bottom: -10px;
+  width: 1px;
+  background: var(--rv-line);
+}
+
+#run-doc .row:last-child::before {
+  display: none;
+}
+
+#run-doc .row.running {
+  background: rgba(26, 107, 90, 0.03);
+}
+
+/* ===== Avatar ===== */
+
+#run-doc .av {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--rv-muted);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  text-transform: uppercase;
+}
+
+/* Avatar background colors are applied inline via the roleColor helper. */
+
+/* ===== Row body ===== */
+
+#run-doc .row-body {
+  min-width: 0;
+}
+
+/* ===== Decision pill (still used by .run-node-head and SSE-injected DOM) ===== */
+
+#run-doc .dec {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  background: var(--rv-good-bg);
+  color: var(--rv-good);
+}
+
+#run-doc .dec.bad   { background: var(--rv-bad-bg);  color: var(--rv-bad); }
+#run-doc .dec.warn  { background: var(--rv-warn-bg); color: var(--rv-warn); }
+#run-doc .dec.plan  { background: var(--rv-plan-bg); color: var(--rv-plan); }
+#run-doc .dec.muted { background: var(--rv-surface); color: var(--rv-muted); border: 1px solid var(--rv-line); }
+
+/* ===== Pill-mockup-H three-line row layout =====
+   Line 1: [path][result-target pill][duration · time · cost]
+   Line 2: [serf:<sid> + copy] [· attempt N of M]
+   Line 3: [show details]
+*/
+
+#run-doc .who-line {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: nowrap;
+  font-size: 13px;
+  justify-content: space-between;
+}
+
+#run-doc .who-line .who-left {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+#run-doc .who-line .who-right {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 6px;
+  color: var(--rv-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#run-doc .who-right .sep {
+  color: var(--rv-line);
+  padding: 0 2px;
+}
+
+/* Path breadcrumb: workflow_id / node_id, step colored by role. */
+#run-doc .path {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: baseline;
+}
+#run-doc .path .wf   { color: var(--rv-muted); font-weight: 400; }
+#run-doc .path .sep  { color: var(--rv-line); padding: 0 4px; font-weight: 400; }
+#run-doc .path .step { color: var(--rv-ink); font-weight: 600; }
+
+/* Step text color is applied inline via the roleColor helper. */
+
+/* Decision+target as a single pill, color-coded by decision family. */
+#run-doc .result-target {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+#run-doc .result-target .arrow {
+  font-weight: 400;
+  opacity: 0.55;
+  padding: 0 1px;
+}
+#run-doc .result-target .target {
+  font-weight: 500;
+  opacity: 0.75;
+  text-decoration: none;
+  color: inherit;
+}
+#run-doc .result-target .target:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+#run-doc .result-target.ok      { background: rgba(31, 157, 110, 0.13);  color: #167a55; }
+#run-doc .result-target.bad     { background: rgba(193, 74, 60, 0.13);   color: #b03f31; }
+#run-doc .result-target.plan    { background: rgba(91, 74, 138, 0.13);   color: var(--rv-plan); }
+#run-doc .result-target.neutral { background: var(--rv-surface);          color: var(--rv-muted); border: 1px solid var(--rv-line); }
+
+/* Line 2: session id + attempt counter */
+#run-doc .meta-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 1px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--rv-muted);
+  flex-wrap: wrap;
+}
+#run-doc .meta-line .sep { color: var(--rv-line); }
+/* Override transcript.css's unscoped .attempt box treatment for the in-row
+   "attempt N of M" tag — it's inline text on the meta-line, not a card. */
+#run-doc .meta-line .attempt {
+  font-variant-numeric: tabular-nums;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#run-doc .meta-line .sid {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* Override the legacy pill .sid styles for the new in-line treatment. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  line-height: inherit;
+  font-size: 11px;
+}
+#run-doc .meta-line .sid .prefix { color: var(--muted-2, #b0bcc8); }
+#run-doc .meta-line .sid .id     { color: var(--muted-2, #b0bcc8); user-select: all; font-weight: 500; text-decoration: none; }
+#run-doc .meta-line .sid a.id:hover { text-decoration: underline; color: var(--rv-accent); }
+#run-doc .meta-line .sid.resume .id { color: var(--rv-resume-id); }
+
+#run-doc .copy-btn {
+  background: transparent;
+  border: 0;
+  padding: 1px 3px;
+  margin: 0;
+  cursor: pointer;
+  color: var(--rv-muted);
+  display: inline-flex;
+  align-items: center;
+  border-radius: 2px;
+}
+#run-doc .copy-btn:hover {
+  color: var(--rv-accent);
+  background: rgba(26, 107, 90, 0.06);
+}
+#run-doc .copy-btn.copied {
+  color: var(--rv-accent);
+}
+#run-doc .copy-btn svg { display: block; }
+
+/* Line 3: show details disclosure */
+#run-doc .details-line {
+  margin-top: 4px;
+}
+
+/* ===== Prompt block ===== */
+
+#run-doc .prompt {
+  font-size: 12.5px;
+  color: var(--rv-muted);
+  line-height: 1.5;
+  margin: 4px 0;
+  padding: 8px 10px;
+  background: var(--rv-surface);
+  border-radius: 4px;
+  border-left: 2px solid var(--rv-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ===== Disclosure toggle ===== */
+
+#run-doc .disclosure {
+  font-size: 11px;
+  color: var(--rv-accent);
+  cursor: pointer;
+  user-select: none;
+  display: inline;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#run-doc .disclosure:hover,
+#run-doc .disclosure:focus-visible {
+  color: var(--rv-ink);
+  outline: none;
+}
+
+#run-doc .disclosure .disc-hint {
+  text-decoration: none;
+  color: var(--rv-muted);
+}
+
+#run-doc .disclosure-body {
+  margin-top: 4px;
+}
+
+/* ===== Result block ===== */
+
+#run-doc .result {
+  font-size: 13px;
+  color: var(--rv-ink);
+  line-height: 1.6;
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#run-doc .result p {
+  margin: 0.3em 0;
+}
+
+/* ===== Disclosure body interior ===== */
+
+#run-doc .disclosure-body .sub-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--rv-muted);
+  margin: 8px 0 3px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--rv-line);
+}
+
+#run-doc .disclosure-body .sub-label .count {
+  font-weight: 400;
+  color: var(--rv-muted);
+}
+
+#run-doc .disclosure-body .artifact {
+  font-size: 12px;
+  display: block;
+  padding: 2px 0;
+}
+
+#run-doc .disclosure-body .artifact-header {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+#run-doc .disclosure-body .artifact-nested {
+  margin-top: 2px;
+  padding-left: 0;
+}
+
+#run-doc .disclosure-body .artifact-nested .artifact {
+  margin-top: 2px;
+}
+
+#run-doc .disclosure-body .artifact .name {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: var(--rv-ink);
+}
+
+#run-doc .disclosure-body .artifact .size {
+  font-size: 10px;
+  color: var(--rv-muted);
+}
+
+#run-doc .disclosure-body .artifact .desc {
+  font-size: 11.5px;
+  color: var(--rv-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60ch;
+}
+
+#run-doc .disclosure-body .session-meta {
+  font-size: 11.5px;
+  color: var(--rv-muted);
+  padding: 2px 0;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+}
+
+#run-doc .disclosure-body .session-meta .meta-key {
+  font-weight: 600;
+  color: var(--rv-ink);
+}
+
+#run-doc .disclosure-body .t-line {
+  font-size: 11.5px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  padding: 1px 0;
+  color: var(--rv-muted);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+#run-doc .disclosure-body .t-line.tool .tool-name {
+  font-weight: 600;
+  color: var(--rv-tool-name);
+}
+
+#run-doc .disclosure-body .t-line.tool .tool-args {
+  color: var(--rv-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60ch;
+}
+
+#run-doc .disclosure-body .t-line.local-prompt {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--rv-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--rv-surface);
+  border-left: 2px solid var(--rv-line);
+  padding: 6px 8px;
+  border-radius: 0 3px 3px 0;
+  margin: 3px 0;
+  display: block;
+}
+
+#run-doc .disclosure-body .boilerplate-strip {
+  font-size: 11px;
+  color: var(--rv-muted);
+  cursor: default;
+  padding: 2px 0;
+}
+
+/* ===== Show-full-session escape hatch ===== */
+
+#run-doc .show-full-session {
+  display: inline-block;
+  margin-top: 8px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--rv-accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--rv-accent);
+}
+
+#run-doc .show-full-session:hover {
+  color: #145947;
+}
+
+#run-doc .full-session-panel {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--rv-surface);
+  border-left: 3px solid var(--rv-line);
+  border-radius: 0 3px 3px 0;
+}
+
+#run-doc .full-session-panel .t-line.full-session-part {
+  display: block;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rv-line);
+  white-space: normal;
+}
+
+#run-doc .full-session-panel .t-line.full-session-part:last-child {
+  border-bottom: none;
+}
+
+/* ===== Disclosure hint ===== */
+
+#run-doc .disc-hint {
+  color: var(--rv-muted);
+}
+
+/* ===== Artifact strip ===== */
+
+#run-doc .artifact-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+#run-doc .artifact-chip {
+  display: inline-flex;
+  gap: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--rv-surface);
+  border: 1px solid var(--rv-line);
+  color: var(--rv-ink);
+}
+
+#run-doc .artifact-chip .art-name {
+  font-weight: 600;
+  color: var(--rv-accent);
+}
+
+#run-doc .artifact-chip .art-desc {
+  color: var(--rv-muted);
+}
+
+#run-doc .artifact-kind-run .art-name    { color: #5b4a8a; }
+#run-doc .artifact-kind-commit .art-name { color: #2a8590; }
+#run-doc .artifact-kind-list .art-name   { color: #c08a2b; }
+
+/* ===== Reconnect error banner ===== */
+
+.banner-error {
+  background: #fdecea; color: #c14a3c;
+  padding: 8px 12px; border-bottom: 1px solid #c14a3c;
+  font-size: 12.5px;
+}
+.banner-error a {
+  color: #c14a3c; font-weight: 600; text-decoration: underline;
+}
+
+/* ===== Running indicators ===== */
+
+.running-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a6b5a;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+.running-strip {
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  color: #1a6b5a;
+  margin-left: 2px;
+}
+.running-result {
+  color: #4a5666;
+}
+
+/* ===== New-activity scroll pill ===== */
+
+.new-activity-pill {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  background: #1b2631;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  font-family: ui-monospace, monospace;
+}
+.new-activity-pill:hover {
+  background: #2c3e50;
+}
+
+/* ===== Run-group compound graph ===== */
+#run-doc .run-group-graph {
+  margin: 16px 0;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--rv-line);
+  border-radius: 6px;
+}
+#run-doc .run-group-graph .elk-graph-canvas {
+  width: 100%;
+  min-height: 200px;
+}
+
+/* Per-run workflow DAG lightbox. Opens when the operator clicks a run-node
+   in the top-of-page run-tree graph; closes on backdrop click, the × button,
+   or Escape. The DAG content is laid out by ELK into .dag-lightbox-canvas. */
+.dag-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dag-lightbox[hidden] {
+  display: none;
+}
+.dag-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(27, 38, 49, 0.5);
+}
+.dag-lightbox-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(27, 38, 49, 0.35);
+  width: min(92vw, 1100px);
+  height: min(82vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dag-lightbox-head {
+  padding: 10px 16px;
+  border-bottom: 1px solid #e3e8ee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  color: #1b2631;
+}
+.dag-lightbox-title { font-weight: 600; letter-spacing: 0.02em; }
+.dag-lightbox-close {
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: #6b7c8f;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 3px;
+}
+.dag-lightbox-close:hover { color: #1b2631; background: #f6f8fa; }
+.dag-lightbox-canvas {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+/* Row-prompt show-more sits on its own line above the disclosure so the two
+   affordances don't share a row. Visual style comes from .show-more in
+   transcript.css — keep them identical. */
+#run-doc .row-body > .show-more {
+  display: block;
+  width: max-content;
+}
+
+/* ===== Run-node tree ===== */
+#run-doc .run-node {
+  position: relative;
+}
+
+#run-doc .run-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--rv-muted);
+  flex-wrap: wrap;
+  padding: 10px 16px 6px;
+  border-top: 1px solid var(--rv-line);
+  margin-top: 16px;
+}
+#run-doc .run-node:first-child > .run-node-head {
+  border-top: none;
+  margin-top: 0;
+}
+#run-doc .run-node-toggle {
+  font-size: 10px;
+  color: var(--rv-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+#run-doc .run-node-toggle:hover,
+#run-doc .run-node-toggle:focus-visible {
+  color: var(--rv-ink);
+  outline: none;
+}
+/* Combined workflow/run-id widget: a label pill, not a link. Used in
+   the run_node header AND inline on every row's path breadcrumb. */
+#run-doc .wf-widget {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 8px;
+  background: var(--rv-surface);
+  border: 1px solid var(--rv-line);
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+#run-doc .wf-widget .wf-name {
+  color: var(--rv-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+#run-doc .wf-widget .wf-sep {
+  color: var(--rv-line);
+}
+#run-doc .wf-widget .wf-runid {
+  color: var(--rv-accent);
+  font-weight: 600;
+}
+#run-doc .run-node-head .title {
+  color: var(--rv-ink);
+  font-size: 11px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 500;
+}
+#run-doc .run-node.compact > .run-node-head .summary,
+#run-doc .run-node.compact > .run-node-head .dur,
+#run-doc .run-node.compact > .run-node-head .dec {
+  display: inline;
+}
+#run-doc .run-node:not(.compact) > .run-node-head .summary,
+#run-doc .run-node:not(.compact) > .run-node-head .dur,
+#run-doc .run-node:not(.compact) > .run-node-head .dec {
+  display: none;
+}
+#run-doc .run-node.compact > .run-node-children {
+  display: none;
+}
+/* Glyph rendering: the ▾/▸ character is set in the template's <span class="glyph">
+   text node, not via ::before content. The compact/expanded toggle will be driven
+   by JS swapping the text node (or by adding/removing the .compact class on the
+   parent and letting JS update the glyph). This keeps a single source of truth
+   for the glyph character and avoids double-rendering. */
+#run-doc .run-node-head .run-node-toggle .glyph { font-family: 'DM Sans', system-ui, sans-serif; }
+
+/* The root run is wrapped in .run-node but its header is intentionally
+   hidden — the page <header> at the top of /ui/runs/<id> shows the same info. */
+#run-doc > .doc-body > .run-node:first-child > .run-node-head {
+  display: none;
+}
+
+/* Parallel child wrapper — header carries the iteration label; no border. */
+#run-doc .parallel-child {
+  margin: 8px 0;
+  padding: 4px 0;
+}
+
+/* Parallel-child header — for ForEach iterations of a base node. Shows the
+   base node id + "iteration N of M" when there are multiple iterations + the
+   iteration's outcome (some_failed / all_succeeded). */
+#run-doc .parallel-child-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--rv-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 0 6px;
+  margin-left: -10px;
+}
+#run-doc .parallel-child-head .par-base {
+  font-weight: 700;
+  color: var(--rv-parallel-head);
+}
+#run-doc .parallel-child-head .par-iter {
+  font-weight: 500;
+}
+#run-doc .parallel-child-head .par-count {
+  color: var(--rv-muted);
+}
+#run-doc .parallel-child-head .par-outcome {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+

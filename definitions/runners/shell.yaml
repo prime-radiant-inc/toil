@@ -1,0 +1,5 @@
+id: shell
+type: shell
+command: bash
+args: ["-lc"]
+resume: false

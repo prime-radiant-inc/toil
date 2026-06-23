@@ -1,0 +1,34 @@
+{
+  "_comment": "Shared parity fixtures for MetricsFmt (JS) / metrics.FormatCost+FormatTokens (Go). Both language test suites read this file; any formatter drift fails one or both. Keep in lockstep with format.go and dashboard/static/js/toil.js.",
+  "cost": [
+    {"in": null, "want": "—"},
+    {"in": 0, "want": "$0.00"},
+    {"in": 0.0001, "want": "$0.0001"},
+    {"in": 0.0004, "want": "$0.0004"},
+    {"in": 0.001, "want": "$0.001"},
+    {"in": 0.0428, "want": "$0.043"},
+    {"in": 0.5, "want": "$0.500"},
+    {"in": 0.999, "want": "$0.999"},
+    {"in": 0.9994, "want": "$0.999"},
+    {"in": 0.9995, "want": "$1.00"},
+    {"in": 0.9999, "want": "$1.00"},
+    {"in": 1.0, "want": "$1.00"},
+    {"in": 12.4, "want": "$12.40"},
+    {"in": 999.99, "want": "$999.99"}
+  ],
+  "tokens": [
+    {"in": 0, "want": "0"},
+    {"in": 42, "want": "42"},
+    {"in": 814, "want": "814"},
+    {"in": 999, "want": "999"},
+    {"in": 1000, "want": "1.00k"},
+    {"in": 1500, "want": "1.50k"},
+    {"in": 9999, "want": "10.0k"},
+    {"in": 10000, "want": "10.0k"},
+    {"in": 12400, "want": "12.4k"},
+    {"in": 999999, "want": "1000.0k"},
+    {"in": 1000000, "want": "1.00M"},
+    {"in": 1200000, "want": "1.20M"},
+    {"in": 10000000, "want": "10.0M"}
+  ]
+}

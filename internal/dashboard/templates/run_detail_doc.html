@@ -1,0 +1,66 @@
+{{template "layout-start" .}}
+<div class="max-w-4xl mx-auto" id="run-doc"
+     data-run-id="{{.Doc.RootRunID}}"
+     data-base-path="{{.BasePath}}"
+     data-run-status="{{.Doc.RootStatus}}">
+
+  <header class="px-4 py-3 border-b border-edge">
+    {{if .Doc.ParentRun}}
+    <a href="{{.BasePath}}/runs/{{.Doc.ParentRun}}" class="text-xs text-accent hover:underline font-mono">← parent: {{.Doc.ParentRun}}</a>
+    {{end}}
+    <h1 class="font-fraunces text-lg">{{.Doc.RootTitle}}</h1>
+    <div class="text-xs text-muted font-mono mt-1">
+      status: <span class="font-semibold">{{.Doc.RootStatus}}</span> ·
+      <span class="text-accent">{{.Doc.RootRunID}}</span> ·
+      {{.Doc.TotalRuns}} sub-runs
+    </div>
+  </header>
+
+  {{if .Doc.CompoundGraph.Nodes}}
+  <div class="run-group-graph">
+    <div id="run-compound-diagram" class="elk-graph-canvas"
+         data-source-id="run-compound-graph-source"
+         data-base-path="{{.BasePath}}"
+         data-selected-run="{{.Doc.RootRunID}}"
+         data-inline="true"></div>
+    <script id="run-compound-graph-source" type="application/json">{{toJSON .Doc.CompoundGraph}}</script>
+  </div>
+  {{end}}
+
+  {{if or .Doc.BriefText .Doc.BriefFields}}
+  <div class="brief">
+    <div class="brief-head">📋 Brief · {{.Doc.BriefSource}}</div>
+    {{if .Doc.BriefHTML}}<div class="brief-body">{{.Doc.BriefHTML}}</div>{{end}}
+    {{if .Doc.BriefFields}}
+    <div class="brief-fields">
+      {{range .Doc.BriefFields}}
+        <div class="brief-field"><span class="brief-key">{{.Key}}</span> <span class="brief-value">{{.Value}}</span></div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <div class="doc-body">
+    {{template "run_node" .Doc.Root}}
+  </div>
+
+</div>
+
+<link rel="stylesheet" href="{{.BasePath}}/static/css/transcript.css">
+<script src="{{.BasePath}}/static/js/generic_renderer.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/index.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/read_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/edit_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/write_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/shell.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/apply_patch.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/grep.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/glob.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/spawn_agent.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/task_list.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/communicate.js" defer></script>
+<script src="{{.BasePath}}/static/js/transcript_view.js" defer></script>
+<script src="{{.BasePath}}/static/js/role_color.js" defer></script>
+<script src="{{.BasePath}}/static/js/run_view.js" defer></script>
+{{template "layout-end" .}}

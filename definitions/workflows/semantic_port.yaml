@@ -1,0 +1,254 @@
+id: semantic_port
+name: Semantic Port
+version: 1
+description: >
+  Looping workflow that tracks upstream commits and incrementally ports
+  semantic changes to a Go implementation. Processes one commit per
+  iteration, analyzing whether changes need porting or can be acknowledged.
+interview: on_issue
+
+inputs:
+  goal: High-level description of what we're porting and why
+  project_dir: Path to the Go project
+  upstream_dir: Path to the cloned upstream repo
+  ledger_path: Path to ledger.tsv (default semantic_port/ledger.tsv in project_dir)
+
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+
+limits:
+  max_loop_iterations: 50
+
+nodes:
+  - id: fetch_upstream
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    # Top-level workflow; limit 50 is intentionally high for bulk porting.
+    # Exhaustion at 50 iterations means the ledger had an unusually large
+    # backlog that couldn't be cleared in one run. No parent to escalate to —
+    # fail fatally so the operator sees a clear error and can decide whether
+    # to increase the limit or investigate the ledger state.
+    loop_exhaustion: fatal
+    decisions:
+      - id: process
+        description: A new commit was found and written to .ai/semport_new_commits.md; proceed to analyze.
+      - id: done
+        description: No unprocessed commits remain in the ledger; workflow exits cleanly.
+    prompt: |
+      # Commit Fetcher
+
+      Our goal: ${input.goal}
+
+      <!-- LOCAL -->
+      Use `semantic_port ledger` for all ledger operations. Ledger
+      entries MUST use short git hashes (7 chars).
+
+      1. Run `semantic_port ledger earliest` to get the earliest
+         commit with disposition='new'
+      2. If found: get the full commit message from ${input.upstream_dir}
+         via `git show --stat <shortsha>`, write it to
+         .ai/semport_new_commits.md, decide process
+      3. If no 'new' commits remain, decide done
+      <!-- /LOCAL -->
+
+  - id: analyze_plan
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    decisions:
+      - id: port
+        description: Upstream commit changes runtime behavior and must be semantically ported to the Go project.
+      - id: skip
+        description: Commit is docs / config / version / pure-syntax only; marked 'acknowledged' in the ledger without porting.
+    prompt: |
+      # Commit Analyzer
+
+      Goal: ${input.goal}
+
+      Read .ai/semport_new_commits.md (a single commit). Examine the
+      upstream diff with `git show <shortsha>` in ${input.upstream_dir}.
+
+      ## CRITICAL: Do NOT read Go source code
+
+      Do NOT open, examine, or reference any .go files. Your decision
+      must be based SOLELY on the upstream diff. If you read Go code,
+      you will convince yourself the port already handles the fix —
+      that is not your call.
+
+      ## Decision Rules
+
+      **PORT** when the commit modifies source code (.py) AND changes
+      runtime behavior: execution flow, error handling, data
+      persistence, guardrails, sessions, model calls, tool management,
+      tracing, streaming, lifecycle hooks.
+
+      Bug fixes are behavioral changes — PORT them. If unsure, PORT.
+
+      **SKIP** only when the commit cannot change behavior in any
+      implementation: docs-only, CI/CD config, version bumps, tooling
+      config, pure syntax changes (import reordering, type annotations).
+
+      ## Bright Lines
+
+      1. Touches .py source AND changes function bodies → PORT
+      2. Commit message says "fix:" → PORT
+      3. Changes error handling or control flow → PORT
+      4. Only docs/README/config/CI touched → SKIP
+      5. Unsure → PORT
+
+      <!-- LOCAL -->
+      ## Process
+
+      Write .ai/semport_plan_sonnet.md with: commit being processed,
+      semantic analysis, DECISION with reasoning, port plan (if porting).
+
+      If skipping: update ledger with `semantic_port ledger update
+      <shortsha> acknowledged && semantic_port ledger sort`, commit the
+      ledger change, then decide skip.
+      <!-- /LOCAL -->
+
+  - id: finalize_plan
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    prompt: |
+      # Plan Finalizer
+
+      Goal: ${input.goal}
+
+      <!-- LOCAL -->
+      Do NOT create new git branches.
+
+      Read .ai/semport_plan_sonnet.md and write
+      .ai/semport_plan_finalized.md with concrete file:line references
+      and clear acceptance criteria for the Go project at
+      ${input.project_dir}. Remove vague language.
+      <!-- /LOCAL -->
+
+  - id: implement_port
+    kind: role
+    runner: serf
+    timeout_sec: 2400
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    prompt: |
+      # Port Implementer
+
+      Goal: ${input.goal}
+
+      <!-- LOCAL -->
+      Do NOT create new git branches. Do NOT override the port decision
+      by setting the ledger to "acknowledged" or skipping implementation.
+
+      Follow .ai/semport_plan_finalized.md. Port the semantic changes
+      to ${input.project_dir} using Go idioms. Focus on semantic
+      equivalence, not literal translation.
+
+      If an upstream pattern doesn't exist in Go (e.g., async
+      cancellation), implement the semantic equivalent. Log all changes
+      to .ai/semport_impl.log.
+
+      If genuinely stuck, write a detailed explanation in
+      .ai/semport_impl.log and decide implemented anyway so the tester
+      can evaluate.
+      <!-- /LOCAL -->
+
+  - id: test_validate
+    kind: role
+    runner: serf
+    timeout_sec: 1800
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    decisions:
+      - id: pass
+        description: "`go test ./...` passes and the ported behavior matches upstream intent; record in ledger."
+      - id: fail
+        description: Tests failed or compilation broke; route to analyze_failure for diagnosis.
+    prompt: |
+      # Port Validator
+
+      Goal: ${input.goal}
+
+      <!-- LOCAL -->
+      Do NOT create new git branches.
+
+      Run `go test ./...` from the repo root. Verify compilation
+      succeeds and ported functionality matches upstream semantic intent.
+      Write results to .ai/semport_validation_report.md.
+      <!-- /LOCAL -->
+
+  - id: analyze_failure
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    prompt: |
+      # Failure Analyst
+
+      Goal: ${input.goal}
+
+      <!-- LOCAL -->
+      Read .ai/semport_validation_report.md and implementation
+      artifacts. Diagnose root causes with specific file:line references.
+      Write .ai/semport_failure_sonnet.md with a revised approach for
+      the implementer.
+      <!-- /LOCAL -->
+
+  - id: finalize_ledger
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    # Top-level workflow; see fetch_upstream comment. Fatal opt-out consistent
+    # across all nodes in this SCC.
+    loop_exhaustion: fatal
+    prompt: |
+      # Ledger Finalizer
+
+      <!-- LOCAL -->
+      Do NOT create new git branches.
+
+      1. Write .ai/semport_implementation_summary.md listing which
+         commits were processed, changes made (file:line), disposition
+      2. Update ledger: `semantic_port ledger update <shortsha> implemented`
+         then `semantic_port ledger sort`
+      3. Verify with `semantic_port ledger stats`
+      4. Commit all changes:
+         `git add -A && git commit -m "semport: implement <shortsha> - <description>"`
+      <!-- /LOCAL -->
+
+edges:
+  - from: fetch_upstream
+    to: analyze_plan
+    when: process
+  - from: analyze_plan
+    to: finalize_plan
+    when: port
+  - from: analyze_plan
+    to: fetch_upstream
+    when: skip
+  - from: finalize_plan
+    to: implement_port
+  - from: implement_port
+    to: test_validate
+  - from: test_validate
+    to: finalize_ledger
+    when: pass
+  - from: test_validate
+    to: analyze_failure
+    when: fail
+  - from: analyze_failure
+    to: implement_port
+  - from: finalize_ledger
+    to: fetch_upstream

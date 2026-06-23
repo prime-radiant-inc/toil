@@ -1,0 +1,143 @@
+{{/* internal/dashboard/templates/run_node.html */}}
+
+{{/* wf_widget renders the [WORKFLOW · run-id] pill as a label.
+     It's an identifier, not a navigation control. Expects a dict with
+     workflow_id and run_id. */}}
+{{define "wf_widget"}}
+<span class="wf-widget">
+  <span class="wf-name">{{index . "workflow_id"}}</span>
+  <span class="wf-sep">·</span>
+  <span class="wf-runid">{{index . "run_id"}}</span>
+</span>
+{{end}}
+
+{{define "run_node"}}
+<section class="run-node{{if index . "compact"}} compact{{end}}"
+         data-run-id="{{index . "run_id"}}"
+         data-workflow-id="{{index . "workflow_id"}}">
+  <header class="run-node-head">
+    <a class="run-node-toggle" href="#" role="button"><span class="glyph">▾</span></a>
+    {{template "wf_widget" (dict "workflow_id" (index . "workflow_id") "run_id" (index . "run_id"))}}
+    {{if index . "title"}}<span class="title">{{index . "title"}}</span>{{end}}
+    <span class="summary">{{index . "summary"}}</span>
+    {{$dur := index . "duration_ms"}}{{if $dur}}<span class="dur">{{formatDurationMsAny $dur}}</span>{{end}}
+    {{if index . "decision"}}<span class="dec {{index . "decision_family"}}">{{index . "decision"}}</span>{{end}}
+  </header>
+  {{/* Per-run workflow topology, kept as inert JSON. The lightbox in
+       toil.js fetches and renders it on demand when the user clicks
+       this run's node in the top-of-page run-tree graph. */}}
+  {{$topo := index . "topology"}}{{if $topo}}
+  <script id="topo-{{index . "run_id"}}" type="application/json">{{toJSON $topo}}</script>
+  {{end}}
+  <div class="run-node-children">
+    {{range index . "children"}}
+      {{if isRow .}}{{template "row_child" .}}
+      {{else if isSubrun .}}{{template "run_node" (runFromSubrun .)}}
+      {{else if isParallel .}}{{template "parallel_child" .}}
+      {{end}}
+    {{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "parallel_child"}}
+{{$total := index . "total"}}{{$index := index . "index"}}
+<div class="parallel-child" data-parent-node="{{index . "parent_node"}}" data-iteration-index="{{$index}}" data-iteration-total="{{$total}}">
+  <header class="parallel-child-head">
+    <span class="par-base">{{index . "parent_node"}}</span>
+    {{if and $total (gt $total 1.0)}}<span class="par-iter">iteration {{$index}} of {{$total}}</span>{{end}}
+    <span class="par-count">{{len (index . "runs")}} {{if eq (len (index . "runs")) 1}}run{{else}}runs{{end}}</span>
+    {{if index . "outcome"}}<span class="par-outcome dec {{index . "outcome"}}">{{index . "outcome"}}</span>{{end}}
+  </header>
+  {{range index . "runs"}}
+    {{template "run_node" .}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "row_child"}}
+{{$attempt := or (index . "attempt_ordinal") 1.0}}
+{{$attemptTotal := or (index . "attempt_total") 1.0}}
+{{$dispatches := index . "dispatches"}}
+{{$role := index . "role"}}
+{{$runner := index . "runner"}}
+{{$sid := index . "session_id"}}
+{{$decision := index . "decision"}}
+{{$family := index . "decision_family"}}
+{{$next := index . "next_target"}}
+{{$dur := index . "duration_ms"}}
+{{$started := index . "started_at"}}
+{{$cost := index . "cost_usd"}}
+{{$durStr := formatDurationMsAny $dur}}
+{{$timeStr := formatTimeHMSAny $started}}
+{{$costStr := formatCostUSDAny $cost}}
+<div class="row{{if index . "running"}} running{{end}}"
+     id="node-{{index . "run_id"}}-{{index . "node_id"}}-attempt-{{$attempt}}"
+     data-run-id="{{index . "run_id"}}"
+     data-node-id="{{index . "node_id"}}"
+     data-attempt="{{$attempt}}">
+  <div class="av" style="background:{{roleColor $role "bg"}}; color:#fff">{{firstLetter $role}}</div>
+  <div class="row-body">
+    <div class="who-line">
+      <div class="who-left">
+        <span class="path">
+          {{if index . "workflow_id"}}
+          {{template "wf_widget" (dict "workflow_id" (index . "workflow_id") "run_id" (index . "run_id"))}}
+          <span class="sep">/</span>
+          {{end}}<span class="step" style="color:{{roleColor $role "text"}}">{{index . "node_id"}}</span>
+        </span>
+        {{if $decision}}
+        <span class="result-target {{$family}}">
+          {{$decision}}
+          {{if $next}}
+            <span class="arrow">→</span>
+            <a class="target" href="#node-{{index . "run_id"}}-{{$next}}-attempt-1">{{$next}}</a>
+          {{end}}
+        </span>
+        {{end}}
+      </div>
+      {{if or $durStr $timeStr $costStr}}
+      <div class="who-right">
+        {{if $durStr}}<span>{{$durStr}}</span>{{end}}
+        {{if and $durStr (or $timeStr $costStr)}}<span class="sep">·</span>{{end}}
+        {{if $timeStr}}<span>{{$timeStr}}</span>{{end}}
+        {{if and $timeStr $costStr}}<span class="sep">·</span>{{end}}
+        {{if $costStr}}<span>{{$costStr}}</span>{{end}}
+      </div>
+      {{end}}
+    </div>
+    {{if or $sid (gt $attemptTotal 1.0) $dispatches}}
+    <div class="meta-line">
+      {{if $sid}}
+      <span class="sid{{if index . "is_resume"}} resume{{end}}">
+        <span class="prefix">{{if $runner}}{{$runner}}{{else}}harness{{end}}:</span><a class="id" href="/ui/agents/{{$sid}}" title="agent diagnostic">{{$sid}}</a>
+        <button class="copy-btn" aria-label="copy session id" title="copy" data-copy="{{$sid}}">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="4" y="4" width="9" height="9" rx="1"/>
+            <path d="M11 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1"/>
+          </svg>
+        </button>
+      </span>
+      {{end}}
+      {{if and $sid (gt $attemptTotal 1.0)}}<span class="sep">·</span>{{end}}
+      {{if gt $attemptTotal 1.0}}<span class="attempt">attempt {{$attempt}} of {{$attemptTotal}}</span>{{end}}
+      {{if and $dispatches (or $sid (gt $attemptTotal 1.0))}}<span class="sep">·</span>{{end}}
+      {{if $dispatches}}<span class="dispatch-count" title="number of logical LLM dispatches for this node">dispatch {{$dispatches}}</span>{{end}}
+    </div>
+    {{end}}
+    <div class="details-line">
+      <a class="disclosure" data-disclosure="closed" href="#" role="button"><span class="disc-label">show details</span>{{$hint := index . "disclosure_hint"}}{{if $hint}} <span class="disc-hint">· {{$hint}}</span>{{end}}</a>
+    </div>
+    {{if index . "result"}}<div class="result">{{index . "result"}}</div>{{end}}
+    {{$arts := index . "artifacts"}}{{if $arts}}
+    <div class="artifact-strip">
+      {{range $arts}}
+        <span class="artifact-chip artifact-kind-{{index . "kind"}}">
+          <span class="art-name">{{index . "name"}}</span>{{if index . "desc"}} <span class="art-desc">{{index . "desc"}}</span>{{end}}
+        </span>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

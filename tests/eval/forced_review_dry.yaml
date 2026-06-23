@@ -1,0 +1,20 @@
+id: forced_review_dry
+name: Forced Review — DRY Violation (duplicated escape functions)
+workflow_id: forced_review_test_dry
+auto_approve: true
+inputs:
+  task:
+    id: task-code-blocks
+    name: "Implement code-block escaping"
+    acceptance_criteria:
+      - "RenderCodeBlock escapes HTML special characters in content"
+      - "go test ./... passes"
+    files:
+      - internal/mdrender/blocks_collections.go
+      - tests/render_test.go
+    guidance: |
+      Code blocks need HTML escaping for content. The package already
+      has an escapeHTML helper in inline.go used by RenderInline.
+    interfaces: ""
+    steps: []
+    depends_on: []

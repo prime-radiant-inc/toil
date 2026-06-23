@@ -1,0 +1,36 @@
+{{define "node-detail-foreach-dispatcher"}}
+<div data-node-detail-kind="subworkflow-foreach" class="p-3 space-y-3">
+    {{if not .Iterations}}
+    <div class="text-muted text-xs">No iterations have been dispatched yet.</div>
+    {{else}}
+    {{range .Iterations}}
+    <div class="border border-edge rounded" x-data="{ open: true }">
+        <div class="flex items-center justify-between p-2">
+            <div class="flex items-center gap-2">
+                <button class="text-xs text-muted hover:text-ink" @click="open = !open">
+                    <span x-show="!open" x-cloak>▸</span><span x-show="open">▾</span>
+                </button>
+                <span class="font-mono text-xs text-muted">[{{.Index}}]</span>
+                <span class="text-sm text-ink">iteration {{.Index}}</span>
+                {{if .Timeline}}
+                <a href="{{.Timeline.BasePath}}/runs/{{.Timeline.RunID}}" class="font-mono text-xs text-accent hover:underline">{{.Timeline.RunID}}</a>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide {{statusClass .Timeline.Status}}">{{.Timeline.Status}}</span>
+                {{end}}
+            </div>
+            <div class="text-xs text-muted">
+                {{if .Timeline}}
+                    {{if not .Timeline.StartedAt.IsZero}}{{.Timeline.StartedAt.Local.Format "15:04:05"}}{{end}}
+                    {{if gt .Timeline.DurationMs 0}}<span class="ml-1">({{printf "%.1fs" (divFloat .Timeline.DurationMs 1000.0)}})</span>{{end}}
+                {{end}}
+            </div>
+        </div>
+        {{if .Timeline}}
+        <div x-show="open" class="border-t border-edge p-2 space-y-px">
+            {{range .Timeline.Entries}}{{template "timeline-entry" .}}{{end}}
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}

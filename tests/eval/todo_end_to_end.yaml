@@ -1,0 +1,16 @@
+id: todo_end_to_end
+name: To-Do End-to-End
+workflow_id: brainstorm
+auto_approve: true
+approvals:
+  human_clarify:
+    decision: clarified
+    message: "Looks good, continue."
+  human_review:
+    decision: approved
+    message: "Design approved."
+inputs:
+  idea: "Build a CLI to-do list app in Go with add/list/done commands. Store data in a local file."
+  context: "Use TDD. Keep scope small. Store tasks in a local JSON file."
+verify:
+  command: "go test -timeout 60s ./..."

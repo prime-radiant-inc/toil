@@ -1,0 +1,116 @@
+{{define "transcript-divider"}}
+{{if .IsEnd}}
+<div class="flex items-center gap-3 py-2 text-xs text-muted">
+    <div class="flex-1 border-t border-edge"></div>
+    <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded-full {{if eq .Text "failed"}}bg-red-100 text-red-700{{else}}bg-green-100 text-green-700{{end}}">{{.Text}}</span>
+        {{if .Decision}}<span>decision: <span class="font-medium text-ink-light">{{.Decision}}</span></span>{{end}}
+        {{if gt .DurationMs 0}}<span>{{printf "%.1fs" (divFloat .DurationMs 1000.0)}}</span>{{end}}
+        {{if .SessionID}}<button type="button" class="session-pill" data-session-id="{{.SessionID}}" title="{{.SessionID}}" aria-label="Copy session id {{.SessionID}}">{{.SessionID}}</button>{{end}}
+    </div>
+    <div class="flex-1 border-t border-edge"></div>
+</div>
+{{else}}
+<div class="flex items-center gap-3 py-2 text-xs text-muted">
+    <div class="flex-1 border-t border-edge-light border-dashed"></div>
+    <div class="flex items-center gap-2">
+        {{if .IsCycle}}
+        <span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Cycle {{.Attempt}}</span>
+        {{else}}
+        <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Retry {{.Attempt}}</span>
+        {{end}}
+        {{if eq .Text "resumed"}}<span class="text-amber-600">resumed session</span>{{else}}<span>new session</span>{{end}}
+        {{if .SessionID}}<button type="button" class="session-pill{{if eq .Text "resumed"}} session-pill--resume{{end}}" data-session-id="{{.SessionID}}" title="{{.SessionID}}" aria-label="Copy session id {{.SessionID}}">{{.SessionID}}</button>{{end}}
+        {{if not .Timestamp.IsZero}}<span>{{.Timestamp.Local.Format "15:04:05"}}</span>{{end}}
+    </div>
+    <div class="flex-1 border-t border-edge-light border-dashed"></div>
+</div>
+{{end}}
+{{end}}
+
+{{/* Role chip: small colored pill shown at the start of each row. */}}
+{{define "transcript-role-chip"}}
+{{- if eq . "assistant" -}}<span class="transcript-chip transcript-chip-asst">ASST</span>
+{{- else if eq . "user" -}}<span class="transcript-chip transcript-chip-user">USER</span>
+{{- else if eq . "system" -}}<span class="transcript-chip transcript-chip-sys">SYS</span>
+{{- else if eq . "prompt" -}}<span class="transcript-chip transcript-chip-prompt">PROMPT</span>
+{{- else if eq . "tool" -}}<span class="transcript-chip transcript-chip-tool">TOOL</span>
+{{- else -}}<span class="transcript-chip">{{.}}</span>
+{{- end -}}
+{{end}}
+
+{{/* Foldable content block (12-line fold with "Show N more lines"). */}}
+{{define "transcript-fold"}}
+<div x-data="foldable(12)" x-init="$nextTick(() => measure())" class="relative">
+    <div x-ref="content" :class="overflows && !expanded && 'transcript-fold-clip'">
+        {{.Body}}
+    </div>
+    <button x-show="overflows && !expanded" x-cloak
+            class="text-accent text-xs mt-1 hover:underline"
+            @click="expanded = true"
+            x-text="'Show ' + extraLines + ' more lines'"></button>
+    <button x-show="overflows && expanded" x-cloak
+            class="text-accent text-xs mt-1 hover:underline"
+            @click="collapse()">Show less</button>
+</div>
+{{end}}
+
+{{define "transcript-item"}}
+{{if eq .Kind "divider"}}
+{{template "transcript-divider" .}}
+{{else}}
+<div class="transcript-row{{if .ToolUseID}} transcript-tool-item{{end}}"{{if .ToolUseID}} data-tool-use-id="{{.ToolUseID}}"{{end}}>
+    <div class="transcript-row-header">
+        {{if eq .Kind "tool"}}
+        {{template "transcript-role-chip" "tool"}}
+        {{else if eq .Kind "prompt"}}
+        {{template "transcript-role-chip" "prompt"}}
+        {{else}}
+        {{template "transcript-role-chip" .Role}}
+        {{end}}
+        {{if not .Timestamp.IsZero}}<span class="transcript-time">{{.Timestamp.Local.Format "15:04:05"}}</span>{{end}}
+        {{if eq .Kind "tool"}}
+        {{$tr := renderTool .}}
+        <span class="transcript-tool-name">▸ {{.ToolName}}</span>
+        {{if $tr.Summary}}<span class="transcript-tool-summary">{{$tr.Summary}}</span>{{end}}
+        {{end}}
+    </div>
+    <div class="transcript-row-body">
+        {{if eq .Kind "tool"}}
+        {{$tr := renderTool .}}
+        {{if $tr.Prelude}}<div class="transcript-tool-prelude">{{$tr.Prelude}}</div>{{end}}
+        {{$multi := gt (len $tr.Sections) 1}}
+        {{range $tr.Sections}}
+        <div class="transcript-tool-section{{if .IsError}} transcript-tool-section-error{{end}}">
+            {{if and $multi .Label}}<div class="transcript-tool-section-label">{{.Label}}</div>{{end}}
+            {{template "transcript-fold" (dict "Body" .Body)}}
+        </div>
+        {{end}}
+        <details class="transcript-tool-raw">
+            <summary>raw</summary>
+            <div class="transcript-tool-raw-body">
+                {{if .Input}}
+                <div class="transcript-tool-raw-label">input</div>
+                <pre class="transcript-tool-raw-pre">{{jsonPretty .Input}}</pre>
+                {{end}}
+                {{if .Output}}
+                <div class="transcript-tool-raw-label">output</div>
+                <pre class="transcript-tool-raw-pre{{if .IsError}} transcript-tool-raw-pre-error{{end}}">{{.Output}}</pre>
+                {{end}}
+            </div>
+        </details>
+        {{else}}
+        <div class="transcript-item-content">
+            {{template "transcript-fold" (dict "Body" (renderMarkdown .Text))}}
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* Compact variant uses the same template; compact styling is applied
+     by the .transcript-compact container class in CSS. */}}
+{{define "transcript-item-compact"}}
+{{template "transcript-item" .}}
+{{end}}

@@ -1,0 +1,366 @@
+id: verify_integration
+name: Verify Integration
+version: 1
+description: >
+  Integration testing, E2E testing, human triage, and release.
+interview: on_issue
+inputs:
+  spec: string
+  stories: list
+  project_dir: string
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: run_integration_tests
+    kind: role
+    runner: serf
+    prompt_on_resume: true
+    prompt: |
+      # Integration Tester
+
+      Test that components work together correctly. Focus on interfaces BETWEEN
+      components, not internal behavior.
+
+      ## Process
+
+      1. Identify cross-component interfaces from the spec
+         (spec and stories are in the prompt inputs below)
+      2. Run integration test suites
+      3. Report exact test output with evidence
+      4. When tests fail, classify the failure category (see below)
+
+      ## Focus Areas
+
+      - API contracts between components
+      - Data flow across component boundaries
+      - Shared state consistency
+      - Error propagation across components
+      - Configuration and environment dependencies
+
+      ## Testing Discipline
+
+      - Run the ACTUAL test commands — do not infer results
+      - Report EXACT output, exit codes, and failure messages
+      - Identify WHICH component boundary failed, not just that something failed
+      - Do not guess at root causes — report evidence
+
+      <!-- LOCAL -->
+      ## Output Format
+
+      ```json
+      {
+        "decision": "pass",
+        "message": "Test command executed.\\nExact output.\\nSummary: N passed, N failed.\\nIf failed: which component boundary and what the evidence shows. If env_bootstrap_failed: which tool binaries or dependencies are missing.",
+        "data": {},
+        "artifacts": []
+      }
+      ```
+      <!-- /LOCAL -->
+    inputs:
+      spec: "${workflow_input.spec}"
+    decisions:
+      - id: pass
+        description: |
+          Integration test suites ran and all tests passed. The
+          message contains the exact test command, output, and a
+          summary of N passed / N failed.
+      - id: fail
+        description: |
+          Integration tests failed, or the test environment couldn't
+          host the run (env_bootstrap_failed — missing tool binaries
+          or dependencies). The message reports the exact command,
+          exact output, and identifies WHICH component boundary
+          failed with evidence; or, for env failures, which tool
+          binaries or dependencies are missing.
+
+  - id: run_e2e_tests
+    kind: role
+    runner: serf
+    prompt_on_resume: true
+    prompt: |
+      # E2E Tester
+
+      Black-box end-to-end testing. Stories and their acceptance criteria are your
+      test specification.
+
+      ## Process
+
+      1. Read the stories from the prompt inputs below
+      2. If stories are present, verify each story's acceptance criteria
+         by exercising the software from the outside (CLI, API, UI)
+      3. If stories are empty, verify the spec requirements directly —
+         the spec is the acceptance criteria
+      4. Do not read internal code to determine correctness
+
+      ## Testing Approach
+
+      Your job is to exercise the BUILT product end-to-end as a
+      real user would. The project's test suite was already run by
+      `run_integration_tests` on the pass edge that reached you —
+      don't re-run it, don't treat it as end-to-end evidence.
+      Drive the built artifact from the outside:
+
+      - **CLI / TUI**: launch the binary under `expect` or inside a
+        detached `tmux` session, send real keystrokes a user would
+        press (movement, quit, etc.), capture the rendered output,
+        and verify what the user would see. Check whatever the
+        product implicitly promises — for a game, that multiple
+        rounds feel different from each other; for a shell, that
+        piping and redirection work; for an editor, that text
+        actually edits.
+      - **Web**: use a headless browser or HTTP client against the
+        running server. Verify page/response content, not just
+        status codes.
+      - **API**: send real HTTP / RPC requests and verify the
+        response bodies, status codes, and error shapes match
+        customer expectations.
+      - **Library**: write a short program that uses the public
+        API and run it. Verify observable behavior, not internal
+        state.
+
+      Verify what a reasonable customer of this kind of product
+      would expect, not only what the acceptance criteria literally
+      name. If the spec names a well-understood product category
+      (tetris, shell, calculator, markdown editor, REST API for X),
+      check that the product actually behaves as a user of that
+      category expects. A tetris where pieces come in a fixed
+      rotation compiles and passes unit tests but is not actually
+      tetris.
+
+      Don't start long-running processes you can't cleanly stop.
+      Tear down `tmux` sessions and kill spawned children before
+      reporting.
+
+      If you genuinely cannot drive the built artifact (no
+      runnable binary, a server that won't start, a hardware-only
+      interface, a missing tool on the path, etc.), decide `fail`
+      with a message that names the env/harness reason explicitly.
+      Do NOT decide `pass` based on the test suite alone — a clean
+      test suite is not end-to-end evidence. The downstream
+      debug node will treat your `fail` as a harness problem when
+      the reason is clearly environmental, not a code bug.
+
+      ## Environmental Constraints on Specific Defaults
+
+      When the spec names a *specific default* (a port number, a
+      hostname, an absolute file path, a default IPC name, etc.),
+      the test environment may not allow you to exercise that
+      literal value — another process is already bound to the
+      port, the path is in use, etc. **An env conflict is not a
+      code bug.** Do not fail the AC just because you couldn't
+      use the literal default.
+
+      Instead, verify the **configuration mechanism** works:
+
+      - Drive the artifact with the override path (`--addr :NNN`,
+        `TAGSRV_ADDR=:NNN`, etc.) using a random free value.
+        Confirm the artifact respects the override.
+      - For the default-value AC specifically: confirm that with
+        no override given the artifact *attempts* to use the
+        spec's named default. A "bind: address already in use"
+        error against the named port is positive evidence the
+        artifact chose that port — the default-selection logic
+        is working. Note this in your evidence: "default behavior
+        confirmed via bind attempt against named port; verbatim
+        end-to-end exercise prevented by env conflict (port held
+        by harness process)."
+      - Mark the AC as PASS in this case, not FAIL. The mechanism
+        is working; the environment just can't host the verbatim
+        exercise. Record the constraint explicitly in your message.
+
+      The general principle: distinguish "the code is wrong" from
+      "the harness can't host the test." The former is `fail`. The
+      latter is `pass with environmental notes`. Running headers
+      against a port-bind failure with the spec's exact port number
+      in the error is *evidence the code is correct*, not evidence
+      it's broken.
+
+      Apply the same logic to non-port defaults: a default file
+      path the harness already has in use, a default config file
+      whose location is busy, a default network interface that's
+      assigned. The principle is unchanged: substitute a free
+      alternative for end-to-end exercise, separately confirm the
+      default-selection logic by looking at the artifact's behavior
+      when no override is given.
+
+      <!-- LOCAL -->
+      ## Evidence Requirements
+
+      For each story:
+      - The acceptance criterion being tested
+      - The exact command or action performed
+      - The exact output received
+      - Whether the criterion is met (PASS/FAIL)
+      - If FAIL: what was expected vs what actually happened
+
+      ## Output Format
+
+      ```json
+      {
+        "decision": "pass",
+        "message": "## Story Results\\n\\n### story-1: Story Title\\n- [x] Criterion 1: evidence\\n- [x] Criterion 2: evidence\\nStatus: PASS\\n\\n### story-2: Story Title\\n- [x] Criterion 1: evidence\\n- [ ] Criterion 2: Expected X, got Y\\nStatus: FAIL\\n\\n## Summary\\nStories: N passed, N failed",
+        "data": {
+          "story_results": {
+            "<story-id>": {
+              "status": "pass",
+              "title": "<story title from frontmatter>",
+              "notes": "<brief evidence summary>"
+            }
+          }
+        },
+        "artifacts": []
+      }
+      ```
+
+      **Structured story results:** If stories are present, populate
+      `data.story_results` with a key for each in-scope story. Use the
+      story's `id` field from frontmatter as the key. Each entry must
+      have `status` ("pass"/"fail"), `title`, and `notes`. If no stories,
+      omit `data.story_results` and report spec verification in the
+      message.
+      <!-- /LOCAL -->
+    inputs:
+      spec: "${workflow_input.spec}"
+      stories: "${workflow_input.stories!}"
+    outputs_schema:
+      type: object
+      properties:
+        story_results:
+          type: object
+          description: |
+            Per-story acceptance-criteria verification results. Keyed
+            by the story's `id` field from frontmatter. Populate when
+            stories are present; omit when no stories (report spec
+            verification in the message instead).
+          additionalProperties:
+            type: object
+            required: [status, title, notes]
+            properties:
+              status:
+                type: string
+                enum: [pass, fail]
+                description: |
+                  "pass" if every acceptance criterion for the story
+                  was met when exercising the built artifact end-to-end;
+                  "fail" if any criterion was unmet.
+              title:
+                type: string
+                description: The story title from frontmatter.
+              notes:
+                type: string
+                description: |
+                  Brief evidence summary — what was exercised, what
+                  was observed, and (on fail) what was expected vs
+                  what actually happened.
+    decisions:
+      - id: pass
+        description: |
+          Every in-scope story's acceptance criteria were verified
+          end-to-end against the built artifact (CLI driven via
+          expect/tmux, web driven via headless browser/HTTP, API
+          driven via real requests, library driven via a short
+          program). Environment-constrained defaults (a port the
+          harness already holds, a path in use) count as PASS when
+          the configuration mechanism is shown to work and the
+          default-selection logic is independently confirmed —
+          record the env constraint explicitly in the message.
+        tags: []
+      - id: fail
+        description: |
+          At least one in-scope story's acceptance criteria failed
+          when exercised end-to-end, OR the built artifact cannot be
+          driven at all (no runnable binary, server won't start,
+          hardware-only interface, missing tool on PATH). For the
+          latter, the message must name the env/harness reason
+          explicitly so the downstream debug node can treat it as
+          a harness problem rather than a code bug. Never decide
+          fail based on test-suite results alone — the test suite
+          was already run upstream.
+
+  - id: debug_integration_test_failure
+    kind: subworkflow
+    workflow: debug_merge
+    inputs:
+      error_context: "${node.run_integration_tests.message}"
+      error_data: "${node.run_integration_tests.data}"
+      spec: "${workflow_input.spec}"
+      project_dir: "${workflow_input.project_dir!}"
+
+  - id: debug_e2e_test_failure
+    kind: subworkflow
+    workflow: debug_merge
+    inputs:
+      error_context: "${node.run_e2e_tests.message}"
+      error_data: "${node.run_e2e_tests.data}"
+      spec: "${workflow_input.spec}"
+      project_dir: "${workflow_input.project_dir!}"
+
+  - id: finish
+    kind: subworkflow
+    workflow: finish_branch
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+
+  - id: declare_verify_stuck
+    kind: emit
+    inputs:
+      int_msg: "${node.run_integration_tests.message}"
+      e2e_msg: "${node.run_e2e_tests.message}"
+      dbg_int_msg: "${node.debug_integration_test_failure.message}"
+      dbg_e2e_msg: "${node.debug_e2e_test_failure.message}"
+    output:
+      decision: escalate
+      message: "Verify-integration loop exhausted. Last integration: ${input.int_msg}"
+      data:
+        last_integration_test_message:   "${input.int_msg}"
+        last_e2e_test_message:            "${input.e2e_msg}"
+        last_debug_integration_message:   "${input.dbg_int_msg}"
+        last_debug_e2e_message:           "${input.dbg_e2e_msg}"
+    decisions: [escalate]
+
+edges:
+  - from: run_integration_tests
+    to: run_e2e_tests
+    when: pass
+  - from: run_integration_tests
+    to: debug_integration_test_failure
+    when: fail
+  - from: run_e2e_tests
+    to: finish
+    when: pass
+  - from: run_e2e_tests
+    to: debug_e2e_test_failure
+    when: fail
+  - from: debug_integration_test_failure
+    to: run_integration_tests
+    when: default
+    prompt: |
+      A merge integration fix has been applied. Re-run all integration tests to verify the fix resolved the post-merge failure.
+  - from: debug_e2e_test_failure
+    to: run_e2e_tests
+    when: default
+    prompt: |
+      A merge integration fix has been applied. Re-run all end-to-end acceptance criteria tests to verify the fix resolved the post-merge failure.
+  # Meta-decision edges: when either loop exhausts, route to the shared
+  # declarative aggregator. Covers both SCCs (integration loop and e2e loop).
+  # The caller (e.g. integrate_component) can route on escalate to surface
+  # the last test and debug messages.
+  - from: run_integration_tests
+    to: declare_verify_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: debug_integration_test_failure
+    to: declare_verify_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: run_e2e_tests
+    to: declare_verify_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: debug_e2e_test_failure
+    to: declare_verify_stuck
+    when: _loop_exhausted
+    failed: true
+limits:
+  max_loop_iterations: 3

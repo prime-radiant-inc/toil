@@ -1,0 +1,217 @@
+{{template "layout-start" .}}
+<div class="max-w-6xl mx-auto space-y-6" x-data="{
+    tab: 'graph',
+    _parseHash() {
+        return new URLSearchParams(location.hash.substring(1));
+    },
+    _updateHash() {
+        const p = new URLSearchParams();
+        p.set('tab', this.tab);
+        const h = p.toString();
+        if (location.hash.substring(1) !== h) history.replaceState(null, '', '#' + h);
+    },
+    setTab(t) {
+        this.tab = t;
+        localStorage.setItem('toil-workflow-tab', t);
+        this._updateHash();
+    },
+    init() {
+        const valid = Array.from($el.querySelectorAll('.tab-bar .tab-btn')).map(b => {
+            const m = b.getAttribute('@click') || '';
+            const match = m.match(/setTab\('([^']+)'\)/);
+            return match ? match[1] : null;
+        }).filter(Boolean);
+        const hash = this._parseHash();
+        const savedTab = hash.get('tab') || localStorage.getItem('toil-workflow-tab') || 'graph';
+        this.tab = (valid.length && !valid.includes(savedTab)) ? 'graph' : savedTab;
+        this._updateHash();
+    }
+}">
+    <div>
+        <nav class="breadcrumb mb-2">
+            <a href="{{.BasePath}}/workflows">Workflows</a>
+            <span class="separator">/</span>
+            <span class="text-ink">{{.Workflow.Name}}</span>
+        </nav>
+        <h1 class="heading-display text-2xl">{{.Workflow.Name}}</h1>
+        <p class="text-sm text-muted">{{.Workflow.Description}}</p>
+    </div>
+
+    {{/* ── Tab bar ── */}}
+    <div class="tab-bar">
+        <button class="tab-btn" :class="tab === 'graph' && 'active'" @click="setTab('graph')">Graph</button>
+        {{if .Source}}<button class="tab-btn" :class="tab === 'source' && 'active'" @click="setTab('source')">Definition</button>{{end}}
+        <button class="tab-btn" :class="tab === 'runs' && 'active'" @click="setTab('runs')">Runs</button>
+        <button class="tab-btn" :class="tab === 'start' && 'active'" @click="setTab('start')">Start Run</button>
+        {{if .Approvals}}<button class="tab-btn" :class="tab === 'approvals' && 'active'" @click="setTab('approvals')">Approvals ({{len .Approvals}})</button>{{end}}
+    </div>
+
+    {{/* ── Tab: Graph ── */}}
+    <div x-show="tab === 'graph'" x-cloak>
+        <div id="workflow-graph-breadcrumb" class="hidden mb-3 flex items-center gap-1 text-xs text-muted"></div>
+        <div id="workflow-compound-diagram" class="elk-graph-canvas" data-source-id="workflow-compound-graph-source" data-base-path="{{.BasePath}}" data-selected-workflow="{{.Workflow.ID}}"></div>
+        <script id="workflow-compound-graph-source" type="application/json">{{toJSON .CompoundWorkflowGraph}}</script>
+    </div>
+
+    {{/* ── Tab: Runs ── */}}
+    <div x-show="tab === 'runs'" x-cloak>
+        <div class="card">
+            <div class="px-4 py-3 border-b border-edge flex items-center justify-between">
+                <div>
+                    <h2 class="heading-display text-lg">Related Workflow Runs</h2>
+                    <p class="text-xs text-muted">Execution groups that include this workflow or connected workflows.</p>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-xs bg-edge-light text-ink-light">{{len .RelatedGroups}} groups · {{.RelatedRunCount}} runs</span>
+            </div>
+            {{if .RelatedGroups}}
+            <div class="divide-y divide-edge-light">
+                {{range .RelatedGroups}}
+                <details class="group">
+                    <summary class="list-none cursor-pointer px-4 py-3 hover:bg-edge-light transition-colors">
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center text-sm">
+                            <div class="col-span-1 lg:col-span-4 min-w-0 flex items-center gap-2">
+                                <span class="text-xs text-muted transition-transform duration-150 group-open:rotate-90">&#9654;</span>
+                                <a class="font-mono text-xs text-accent hover:underline truncate" href="{{$.BasePath}}/runs/{{.Root.ID}}">{{.Root.ID}}</a>
+                                <span class="text-ink truncate">{{.Root.Title}}</span>
+                            </div>
+                            <div class="col-span-1 lg:col-span-3 text-ink-light truncate">{{.Root.WorkflowID}}</div>
+                            <div class="col-span-1 lg:col-span-2">
+                                <span class="px-2 py-0.5 rounded-full text-xs {{statusClass .GroupStatus}}">{{humanizeStatus .GroupStatus}}</span>
+                            </div>
+                            <div class="col-span-1 lg:col-span-2 text-ink-light" title="{{formatTime .Root.StartedAt}}">{{timeAgo .Root.StartedAt}}</div>
+                            <div class="col-span-1 lg:col-span-1 text-ink-light">{{.TotalRuns}} runs</div>
+                        </div>
+                    </summary>
+                    <div class="px-4 pb-4">
+                        {{if gt (len .Rows) 1}}
+                        <div class="border border-edge rounded-lg overflow-hidden">
+                            {{range .Rows}}
+                            {{if gt .Depth 0}}
+                            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center text-sm border-t border-edge-light py-2 px-3">
+                                <div class="col-span-1 lg:col-span-5 min-w-0 flex items-center" style="padding-left: {{.IndentPx}}px;">
+                                    <span class="tree-line"></span>
+                                    <a class="font-mono text-xs text-accent hover:underline truncate" href="{{$.BasePath}}/runs/{{.Run.ID}}">{{.Run.ID}}</a>
+                                </div>
+                                <div class="col-span-1 lg:col-span-3 text-ink truncate">{{.Run.Title}}</div>
+                                <div class="col-span-1 lg:col-span-2 text-ink-light truncate">{{.Run.WorkflowID}}</div>
+                                <div class="col-span-1 lg:col-span-1">
+                                    <span class="px-2 py-0.5 rounded-full text-xs {{statusClass (effectiveRunStatus .Run)}}">{{humanizeStatus (effectiveRunStatus .Run)}}</span>
+                                </div>
+                                <div class="col-span-1 lg:col-span-1 text-ink-light">{{.Run.Duration}}</div>
+                            </div>
+                            {{end}}
+                            {{end}}
+                        </div>
+                        {{else}}
+                        <div class="text-sm text-muted">No child runs in this group.</div>
+                        {{end}}
+                    </div>
+                </details>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="px-4 py-6 text-sm text-muted">No related runs yet.</div>
+            {{end}}
+        </div>
+    </div>
+
+    {{/* ── Tab: Start Run ── */}}
+    <div x-show="tab === 'start'" x-cloak>
+        <div class="card">
+            <div class="px-4 py-3 border-b border-edge">
+                <h2 class="heading-display text-lg">Run Workflow</h2>
+            </div>
+            <form class="p-4 space-y-4" action="{{.BasePath}}/workflows/{{.Workflow.ID}}/run" method="post">
+                {{if .Inputs}}
+                {{range .Inputs}}
+                <div>
+                    <label class="block text-sm font-medium text-ink-light">{{.Label}}</label>
+                    <input class="input-field mt-1" type="text" name="input_{{.Key}}" placeholder="{{.Description}}">
+                </div>
+                {{end}}
+                {{else}}
+                <div class="text-sm text-muted">No inputs required.</div>
+                {{end}}
+                <div>
+                    <label class="block text-sm font-medium text-ink-light">PROJECT_DIR</label>
+                    <input class="input-field mt-1" type="text" name="project_dir" placeholder="/path/to/project">
+                    <p class="text-xs text-muted mt-1">Optional. Used to expand workflow workspace paths.</p>
+                </div>
+                <div class="sticky bottom-0 bg-white border-t border-edge p-4 -mx-4 mt-4 sm:static sm:border-0 sm:p-0 sm:m-0">
+                    <button class="btn-primary w-full sm:w-auto" type="submit">Start Run</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{/* ── Tab: Approvals ── */}}
+    {{if .Approvals}}
+    <div x-show="tab === 'approvals'" x-cloak>
+        <div class="card">
+            <div class="px-4 py-3 border-b border-edge flex items-center justify-between">
+                <div>
+                    <h2 class="heading-display text-lg">Pending Approvals</h2>
+                    <p class="text-xs text-muted">Runs waiting for a decision.</p>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">{{len .Approvals}}</span>
+            </div>
+            <div class="divide-y divide-edge">
+                {{range .Approvals}}
+                <div class="p-4 space-y-4">
+                    <div>
+                        <div class="text-sm font-medium">{{.NodeLabel}}</div>
+                        <div class="text-xs text-muted">Run <a class="text-accent hover:underline" href="{{$.BasePath}}/runs/{{.RunID}}">{{.RunID}}</a> · {{.CreatedAt}}</div>
+                    </div>
+                    {{if .QuestionHTML}}
+                    <div class="border border-edge bg-surface rounded-lg p-3 text-sm">
+                        <div class="prose max-w-none">{{.QuestionHTML}}</div>
+                    </div>
+                    {{end}}
+                    <form class="space-y-4" action="{{$.BasePath}}/approvals/{{.ID}}/resolve" method="post">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-ink-light">Decision</label>
+                                {{if .DecisionOptions}}
+                                <select name="decision" class="input-field mt-1" required>
+                                    {{range .DecisionOptions}}
+                                    <option value="{{.}}">{{.}}</option>
+                                    {{end}}
+                                </select>
+                                {{else}}
+                                <input class="input-field mt-1" name="decision" type="text" required>
+                                {{end}}
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-ink-light">Message</label>
+                                <input class="input-field mt-1" name="message" type="text" required>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-ink-light">Comment (optional)</label>
+                            <textarea class="input-field mt-1" name="comment" rows="2"></textarea>
+                        </div>
+                        <div class="flex items-center justify-end">
+                            <button class="btn-primary w-full sm:w-auto min-h-[48px]" type="submit">Resolve</button>
+                        </div>
+                    </form>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+
+    {{/* ── Tab: Definition ── */}}
+    {{if .Source}}
+    <div x-show="tab === 'source'" x-cloak>
+        <div class="card">
+            <div class="px-4 py-3 border-b border-edge">
+                <h2 class="heading-display text-lg">Workflow Definition</h2>
+                <p class="text-xs text-muted">YAML source</p>
+            </div>
+            <pre class="p-4 text-xs overflow-auto bg-surface text-ink-light"><code class="language-yaml">{{.Source}}</code></pre>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{template "layout-end" .}}

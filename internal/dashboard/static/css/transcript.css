@@ -1,0 +1,589 @@
+/* transcript.css — per-attempt sub-transcripts and tool-call cards */
+
+:root {
+  --muted-2: #b0bcc8;
+}
+
+.transcript { padding: 8px 0; }
+
+/* ── Per-attempt sub-transcript ───────────────────────────────────────── */
+
+.attempt {
+  border: 1px solid var(--edge, #d8dde3);
+  border-radius: 6px;
+  margin: 12px 0;
+  background: var(--surface, #f6f8fa);
+}
+
+.attempt-header {
+  padding: 6px 10px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  border-bottom: 1px solid var(--edge, #d8dde3);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.attempt-succeeded .attempt-header { color: var(--accent, #1a6b5a); }
+.attempt-failed .attempt-header { color: #c0392b; }
+.attempt-running .attempt-header { color: var(--muted, #6b7c8f); }
+
+.attempt-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Messages ─────────────────────────────────────────────────────────── */
+
+.msg-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted, #6b7c8f);
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+
+.msg-body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.msg-body p { margin: 0 0 8px 0; font-size: 13px; }
+.msg-body p:last-child { margin-bottom: 0; }
+.msg-body ul, .msg-body ol { margin: 4px 0 8px 18px; }
+.msg-body code {
+  font-size: 12px;
+  padding: 0 4px;
+  background: rgba(0,0,0,0.04);
+  border-radius: 3px;
+}
+.msg-body pre {
+  font-size: 12px;
+  padding: 6px;
+  background: rgba(0,0,0,0.03);
+  border-radius: 3px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.msg-user {
+  border-left: 3px solid #9bb0c2;
+  padding-left: 10px;
+}
+
+.msg-assistant {
+  border-left: 3px solid var(--accent, #1a6b5a);
+  padding-left: 10px;
+}
+
+.msg-system {
+  font-size: 12px;
+  color: var(--muted, #6b7c8f);
+}
+
+.msg-system-summary { cursor: pointer; user-select: none; }
+
+.msg-system-body {
+  margin-top: 6px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow: auto;
+}
+
+.msg-decision {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(26, 107, 90, 0.06);
+}
+
+.msg-decision-fail { background: rgba(192, 57, 43, 0.06); }
+.msg-decision-escalate { background: rgba(240, 195, 0, 0.10); }
+.msg-decision-skip { background: rgba(107, 124, 143, 0.10); }
+
+.decision-headline { font-size: 13px; font-weight: 600; }
+.decision-desc { margin-top: 4px; color: var(--muted, #6b7c8f); font-size: 12px; }
+
+.decision-tags {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.decision-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--ink, #1b2631);
+}
+
+.msg-unknown {
+  color: var(--muted, #6b7c8f);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* ── Tool-call cards ──────────────────────────────────────────────────── */
+/* Cards are content blocks with a thin accent stripe on the left — no
+   bordered box, no fill, no rounded corners. Per-family stripe color via
+   border-left-color. Internal separation comes from spacing and labels,
+   not nested borders. */
+
+.tc {
+  border-left: 3px solid var(--muted, #6b7c8f);
+  padding: 4px 0 4px 10px;
+  margin: 6px 0;
+  font-size: 13px;
+  background: transparent;
+}
+
+.tc-error {
+  border-left-color: #c0392b;
+}
+
+.tc-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  padding: 0;
+}
+
+.tc-summary-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tc-body {
+  padding: 4px 0 0 0;
+  border-top: none;
+}
+
+/* Tool-family accents (left border color) */
+.tc-read { border-left-color: #5b8fb9; }
+.tc-edit, .tc-write, .tc-patch { border-left-color: #c4a05a; }
+.tc-shell { border-left-color: #4a5568; }
+.tc-grep, .tc-glob { border-left-color: #6b9080; }
+.tc-spawn { border-left-color: #a685d4; }
+.tc-tasklist { border-left-color: #b59470; }
+.tc-communicate { border-left-color: var(--accent, #1a6b5a); }
+.tc-unknown { border-left-color: var(--muted, #6b7c8f); }
+
+/* Badges */
+.tc-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+}
+
+.tc-badge-muted {
+  background: transparent;
+  color: var(--muted, #6b7c8f);
+}
+
+.tc-badge-error {
+  background: rgba(192, 57, 43, 0.15);
+  color: #c0392b;
+}
+
+.tc-badge-add {
+  background: rgba(26, 107, 90, 0.10);
+  color: var(--accent, #1a6b5a);
+}
+
+.tc-badge-del {
+  background: rgba(192, 57, 43, 0.10);
+  color: #b04638;
+}
+
+/* Filesystem paths in summary lines — same body font, hover tooltip
+   reveals the full path when a long path gets truncated by the container. */
+.tc-path {
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* "(no output)" / "(no matches)" — friendly empty-state line. */
+.tc-empty {
+  display: inline-block;
+  color: var(--muted, #6b7c8f);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Status indicator: success ✓ / failure ✗ / in-flight … */
+.tc-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: "DM Mono", ui-monospace, monospace;
+  line-height: 1;
+}
+.tc-status-ok {
+  color: var(--accent, #1a6b5a);
+}
+.tc-status-fail {
+  color: #b04638;
+}
+.tc-status-pending {
+  color: var(--muted-2, #b0bcc8);
+  font-weight: 400;
+}
+
+/* Inline code spans inside summaries */
+.tc-cmd, .tc-grep-pattern {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.tc-task-desc {
+  color: var(--muted, #6b7c8f);
+  font-style: italic;
+}
+
+/* Content blocks — monospace, no fill, no border. The card's left stripe
+   plus the visual weight of code typography is enough separation. */
+.tc-read-content,
+.tc-write-content,
+.tc-grep-results,
+.tc-glob-results,
+.tc-task-text,
+.tc-error-content,
+.tc-stdout,
+.capped-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.tc-error-content {
+  color: #8a2a1a;
+}
+
+/* Diff hunks (edit_file + apply_patch) — add/del backgrounds are
+   load-bearing for diff readability and stay. No outer container fill. */
+.tc-diff {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tc-diff-header {
+  color: var(--muted, #6b7c8f);
+  padding: 2px 0;
+  background: transparent;
+}
+
+.tc-diff-line {
+  white-space: pre;
+  padding: 0 4px;
+  line-height: 1.4;
+}
+
+.tc-diff-add { background: rgba(26, 107, 90, 0.12); }
+.tc-diff-del { background: rgba(192, 57, 43, 0.12); }
+.tc-diff-ctx { color: var(--ink, #1b2631); }
+
+/* Shell output container — no fill, no border. Mono font is sufficient. */
+.tc-terminal {
+  background: transparent;
+  color: var(--ink, #1b2631);
+  padding: 0;
+}
+
+.tc-stdout {
+  color: inherit;
+  background: transparent;
+}
+
+/* communicate / task list bodies */
+.tc-communicate, .tc-tasklist, .tc-task-result, .tc-unknown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tc-comm-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.tc-comm-output {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.tc-comm-output > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted, #6b7c8f);
+  user-select: none;
+}
+.tc-comm-output > summary::-webkit-details-marker { display: none; }
+.tc-comm-output > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.1s;
+}
+.tc-comm-output[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.tc-summary-text { font-size: 13px; }
+
+/* Show-more / Show full / show details — all expand affordances share one look:
+   a plain underlined accent-colored link, inline, no chrome. */
+.show-more {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 2px 0 0;
+  display: inline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent, #1a6b5a);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.show-more:hover,
+.show-more:focus-visible {
+  color: var(--ink, #1b2631);
+  outline: none;
+}
+
+/* Wrapper for capped (truncated) content blocks */
+.capped {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tc-args, .tc-result {
+  background: transparent;
+  padding: 2px 0;
+}
+
+/* ── Generic-but-smart renderer ───────────────────────────────────────── */
+
+.gr-empty {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.gr-prim {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.gr-string {
+  /* inherit defaults */
+}
+
+.gr-string-block {
+  margin: 4px 0;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.gr-list {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.gr-list-inline {
+  /* comma-separated inline */
+}
+
+.gr-list-item {
+  margin: 2px 0;
+}
+
+.gr-obj {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px dotted var(--edge, #d8dde3);
+}
+
+.gr-obj-inline {
+  /* inline layout */
+}
+
+.gr-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.gr-obj-inline .gr-row {
+  display: inline-flex;
+}
+
+.gr-key {
+  color: var(--muted, #6b7c8f);
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.gr-dup {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.gr-bool-summary {
+  color: var(--muted, #6b7c8f);
+  font-size: 12px;
+}
+
+.gr-sep {
+  color: var(--muted, #6b7c8f);
+}
+
+/* ── Attempt failure note (replaces the old attempt header for failed attempts) ── */
+
+.attempt-failure-note {
+  padding: 4px 10px 4px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: #c0392b;
+  margin-bottom: 6px;
+}
+
+/* ── Task list (serf task_list tool) ───────────────────────────────────── */
+
+.tc-tasklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tc-task {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink, #1b2631);
+}
+
+.tc-task-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tc-task-num {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted, #6b7c8f);
+  min-width: 1.6em;
+}
+
+.tc-task-desc {
+  font-weight: 600;
+}
+
+.tc-task-meta {
+  font-size: 11px;
+  color: var(--muted, #6b7c8f);
+  margin-left: 1.6em;
+  margin-top: 1px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.tc-task-deps {
+  font-family: "DM Mono", ui-monospace, monospace;
+}
+
+.tc-task-prompt {
+  font-size: 12px;
+  color: var(--muted, #6b7c8f);
+  margin-left: 1.6em;
+  margin-top: 3px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* type chips */
+.tc-task-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+}
+
+.tc-task-type-research  { background: rgba(91, 74, 138, 0.12);  color: #5b4a8a; }
+.tc-task-type-implement { background: rgba(26, 107, 90, 0.12);  color: var(--accent, #1a6b5a); }
+.tc-task-type-verify    { background: rgba(192, 138, 43, 0.12); color: #c08a2b; }
+.tc-task-type-debug     { background: rgba(192, 57, 43, 0.12);  color: #c0392b; }
+
+/* status chips for updates */
+.tc-task-status-done        { background: rgba(26, 107, 90, 0.15);  color: var(--accent, #1a6b5a); }
+.tc-task-status-in_progress { background: rgba(192, 138, 43, 0.15); color: #c08a2b; }
+.tc-task-status-pending     { background: rgba(107, 124, 143, 0.15); color: var(--muted, #6b7c8f); }
+.tc-task-status-blocked     { background: rgba(192, 57, 43, 0.15);  color: #c0392b; }
+.tc-task-status-skipped     { background: rgba(107, 124, 143, 0.15); color: var(--muted, #6b7c8f); }
+
+/* visualClamp — CSS line-clamp to N rendered lines (after word wrap). */
+.vclamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--vlc-lines, 3);
+  line-clamp: var(--vlc-lines, 3);
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.vclamp.expanded {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  overflow: visible;
+}

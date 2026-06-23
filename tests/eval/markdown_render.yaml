@@ -1,0 +1,132 @@
+id: markdown_render
+name: Markdown Renderer
+workflow_id: implement_spec
+# project_dir intentionally unset — eval CLI auto-generates a unique
+# tmpdir per invocation so sequential/concurrent runs can't contaminate
+# each other. Pass --project-dir if you want to pin a specific path.
+auto_approve: true
+approvals:
+  human_review:
+    decision: approved
+    message: "Plan approved."
+inputs:
+  spec: |
+    # mdrender
+
+    A command-line Markdown-to-HTML renderer in Go. No external libraries —
+    standard library only.
+
+    ## Usage
+
+    ```
+    mdrender < input.md > output.html
+    mdrender input.md
+    mdrender input.md -o output.html
+    ```
+
+    - Reads from stdin when no file argument is given
+    - Prints to stdout by default
+    - `-o` flag writes to file instead of stdout
+    - Exit 1 with error to stderr for missing input file or unwritable output
+
+    ## Supported Markdown Subset
+
+    ### Block Elements
+
+    - **Headings**: `# H1` through `###### H6` — line must start with 1-6 `#`
+      followed by a space. Output: `<h1>` through `<h6>`.
+    - **Paragraphs**: Consecutive non-blank lines become a `<p>`. Paragraphs
+      are separated by one or more blank lines.
+    - **Fenced code blocks**: Lines between ` ``` ` fences become
+      `<pre><code>`. Content inside is NOT processed for inline formatting.
+      An optional language tag after the opening fence (e.g., ` ```go `)
+      adds `class="language-go"` to the `<code>` element.
+    - **Unordered lists**: Lines starting with `- ` become `<ul><li>`.
+      Consecutive list items form a single `<ul>`. A blank line or
+      non-list-item ends the list.
+    - **Ordered lists**: Lines starting with `N. ` (digit(s), dot, space)
+      become `<ol><li>`. Same grouping rules as unordered.
+    - **Horizontal rules**: A line containing only `---` (three or more
+      hyphens, nothing else) becomes `<hr>`.
+    - **Blockquotes**: Lines starting with `> ` become `<blockquote>`.
+      Consecutive blockquote lines form a single blockquote. Content
+      inside blockquotes is processed for inline formatting.
+
+    ### Inline Elements (applied inside paragraphs, headings, list items, blockquotes)
+
+    - `**bold**` → `<strong>bold</strong>`
+    - `*italic*` → `<em>italic</em>`
+    - `` `code` `` → `<code>code</code>`
+    - `[text](url)` → `<a href="url">text</a>`
+    - `![alt](url)` → `<img src="url" alt="alt">`
+
+    ### Output Rules
+
+    - Output is an HTML fragment (no `<html>`, `<head>`, `<body>` wrapper)
+    - Output ends with a newline
+    - No extra blank lines between elements
+    - HTML special characters in text content (`<`, `>`, `&`, `"`) must be
+      escaped in the output
+
+  stories:
+    - id: story-1
+      title: CLI interface
+      description: Basic command-line argument handling
+      acceptance_criteria:
+        - "Reading from stdin: `echo '# Hello' | mdrender` outputs `<h1>Hello</h1>` to stdout"
+        - "Reading from file: `mdrender input.md` reads the file and outputs to stdout"
+        - "Writing to file: `mdrender input.md -o out.html` writes output to out.html"
+        - "Missing file: `mdrender nonexistent.md` exits 1 with error on stderr"
+        - "No arguments and no stdin pipe: reads from stdin (blocks waiting for input)"
+
+    - id: story-2
+      title: Block elements
+      description: Headings, paragraphs, horizontal rules
+      acceptance_criteria:
+        - "`# Foo` renders as `<h1>Foo</h1>`, `## Bar` as `<h2>Bar</h2>`, through h6"
+        - "Consecutive non-blank lines are wrapped in a single `<p>` tag"
+        - "Blank lines separate paragraphs into distinct `<p>` tags"
+        - "A line of `---` (3+ hyphens only) renders as `<hr>`"
+        - "Inline formatting is processed inside headings and paragraphs"
+        - "HTML special chars `<`, `>`, `&`, `\"` in text are escaped to entities"
+
+    - id: story-3
+      title: Inline formatting
+      description: Bold, italic, code, links, images
+      acceptance_criteria:
+        - "`**word**` renders as `<strong>word</strong>`"
+        - "`*word*` renders as `<em>word</em>`"
+        - "`` `code` `` renders as `<code>code</code>`"
+        - "`[text](url)` renders as `<a href=\"url\">text</a>`"
+        - "`![alt](url)` renders as `<img src=\"url\" alt=\"alt\">`"
+        - "Multiple inline elements in one line are all processed"
+        - "Inline formatting inside `<code>` spans is NOT processed"
+
+    - id: story-4
+      title: Code blocks
+      description: Fenced code blocks with optional language
+      acceptance_criteria:
+        - "Lines between ``` fences render as `<pre><code>content</code></pre>`"
+        - "Language tag ` ```go ` adds `class=\"language-go\"` to the code element"
+        - "Content inside code blocks is not processed for inline Markdown"
+        - "HTML special chars inside code blocks are escaped"
+
+    - id: story-5
+      title: Lists
+      description: Ordered and unordered lists
+      acceptance_criteria:
+        - "Lines starting with `- ` are wrapped in `<ul><li>...</li></ul>`"
+        - "Lines starting with `N. ` are wrapped in `<ol><li>...</li></ol>`"
+        - "Consecutive list items form a single list element"
+        - "A blank line or non-list line ends the current list"
+        - "Inline formatting is processed inside list items"
+
+    - id: story-6
+      title: Blockquotes
+      description: Quoted text blocks
+      acceptance_criteria:
+        - "Lines starting with `> ` are wrapped in `<blockquote><p>...</p></blockquote>`"
+        - "Consecutive blockquote lines form a single blockquote"
+        - "Inline formatting is processed inside blockquotes"
+verify:
+  command: "go test -timeout 60s ./..."

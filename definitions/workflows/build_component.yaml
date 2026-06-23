@@ -1,0 +1,865 @@
+id: build_component
+name: Build Component
+version: 1
+description: >
+  Per-component workflow. Creates a worktree, plans the tasks, runs the
+  tasks with dependency-aware scheduling, and commits any stragglers.
+  No merge — that happens in the separate integrate_component workflow.
+interview: on_issue
+# 8 (not 5) because plan_tasks ↔ review_plan can iterate several times
+# before approval. Inherited from the former plan_component limits when
+# build_component and plan_component merged.
+limits:
+  max_loop_iterations: 8
+inputs:
+  component: object
+  project_dir: string
+  spec: string
+  stories: list
+  parent_run_id: string
+  product_slug: string
+  repo: string
+input_schema:
+  product_slug:
+    optional: true
+  parent_run_id:
+    optional: true
+  repo:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: create_worktree
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/create_worktree.sh"
+    inputs:
+      repo: "${workflow_input.repo}"
+      component_id: "${workflow_input.component.id}"
+      parent_run_id: "${workflow_input.parent_run_id}"
+
+  - id: plan_tasks
+    kind: role
+    runner: serf
+    prompt: |
+      # Surgeon
+
+      You are the chief architect for this component. Your plan ensures
+      conceptual integrity — all the pieces fit together because one
+      mind made the design decisions that matter.
+
+      Downstream agents (test engineer, code engineer) write the
+      implementation code. Your plan gives them the architecture, the
+      contracts between components, and guidance on the parts that
+      require taste. They handle the straightforward code.
+
+      ## Your Job
+
+      First, understand what already exists. Use a subagent to
+      explore the workspace — read the source files, tests, and
+      build configuration. Understand what's already implemented,
+      what interfaces the existing code uses, and what tests exist.
+
+      Then compare the existing code against the spec. Requirements
+      that are already correctly implemented don't need tasks —
+      the verifier will confirm them at the end. Only plan tasks
+      for what's missing, broken, or needs to change.
+
+      If the workspace is empty or contains only .gitignore, treat
+      it as a greenfield project and include scaffolding as Task 1.
+
+      When the workspace has existing code:
+      - Design interfaces that match the existing code where it
+        already satisfies the spec. Don't invent new interfaces
+        that conflict with working code.
+      - Plan tasks only for the delta — new features, missing
+        behavior, spec violations that need fixing.
+      - If existing tests cover a requirement correctly, don't
+        rewrite them.
+
+      ## When the Spec Is Explicit, It Is Law
+
+      When the spec pins something down — language, libraries, output
+      format, naming, behavior — you do not substitute, simplify, or
+      reinterpret. "Go" means Go, not Python. "No external libraries"
+      means standard library only. "Stdout" means stdout, not a file.
+      Explicit constraints override any customer-expectation defaults
+      you would otherwise apply.
+
+      Plans that ignore or reinterpret an explicit requirement are
+      rejected.
+
+      ## Under-Specified Specs
+
+      Specs are almost always briefer than what a real customer
+      expects. "A terminal tetris" names a product; it doesn't spell
+      out that pieces should be random, what the default controls are,
+      or what happens on game over. Your job is NOT to build only what
+      is literally written — it is to deliver what a reasonable
+      customer of this kind of product would expect.
+
+      For every aspect the spec leaves open, make a concrete default
+      choice and document it. Collect these in the plan's
+      `architecture` field under an explicit "Assumptions:" list so
+      the reviewer and the implementers can see what you filled in.
+
+      Things worth documenting when they are not pinned down:
+
+      - Input/output conventions (which keys, which HTTP verbs, which
+        error shape, which exit codes)
+      - Feature scope a customer would assume for this kind of product
+      - Behavior at boundaries (empty input, overflow, idle state,
+        errors, recovery)
+      - Non-functional defaults (file layout, error messages, logging,
+        performance targets)
+
+      Bias toward what a customer would expect, not toward the minimum
+      the literal words force. Silence in the spec is not a
+      prohibition. If the spec later contradicts a default you would
+      have applied, the spec wins — but do not leave implied features
+      out just because they were not named.
+
+      **Every Assumption that affects observable behavior must also
+      appear as an `acceptance_criteria` entry on the task that
+      implements it.** Assumptions that live only in the architecture
+      prose are invisible to the test engineer writing tests, the code
+      engineer implementing, and the spec reviewer. Documenting
+      "pieces are selected via a 7-bag randomizer" in `architecture`
+      without a matching AC means the implementation can ship a
+      deterministic cycle and every gate will approve it. The plan
+      reviewer rejects plans that violate this.
+
+      If a requirement is genuinely ambiguous in a way defaults cannot
+      resolve, call it out explicitly in the plan — do not silently
+      choose a substitute.
+
+      ## Scope
+
+      If input.component.relevant_stories is non-empty, ONLY implement
+      those stories. If relevant_stories is empty, implement everything
+      described in the spec — the spec is the sole source of
+      requirements.
+
+      The full spec and story details are in the input files listed
+      below. All context is in the inputs — do not look for files
+      outside the workspace.
+
+      ## Project Scaffolding
+
+      When building a new project from scratch (no existing code), the
+      first task must be project scaffolding — the infrastructure a
+      senior developer sets up before writing feature code:
+
+      - Build system (Makefile, package.json scripts, etc.)
+      - Module/package config with correct language version
+      - Linter and formatter config appropriate to the language
+      - .gitignore tailored to the actual tech stack (not boilerplate)
+      - Directory layout following language conventions
+      - Minimal compilable entrypoint so tests can run
+
+      ### Project / Package Name
+
+      The scaffold must set a proper project or package name. Use
+      `input.product_slug` (lowercased, separator normalized to the
+      ecosystem's convention — hyphens for Cargo/npm, underscores for
+      Python, etc.) when it is provided and non-empty. Otherwise,
+      derive a short slug from the spec's product name. Never use the
+      worktree directory name or run ID — those look like
+      `implementation-indigo-lagoon-horizon` and leak into shipped
+      artifacts like `Cargo.toml`'s `[package] name` or
+      `package.json`'s `name` field.
+
+      The scaffold task's `acceptance_criteria` must include a
+      criterion that the correct name appears in the canonical config
+      file for the ecosystem (Cargo.toml `[package] name`,
+      package.json `name`, pyproject.toml `project.name`, go.mod
+      `module` path, etc.).
+
+      The scaffold must NOT include stubs, skeletons, or function
+      signatures for feature work. No command routing, no handler
+      functions, no "not implemented" placeholders. Only build
+      infrastructure. Type definitions that are part of the
+      architectural contracts belong in the scaffold if they have
+      no behavioral logic; otherwise they belong in feature tasks.
+      Feature code is built incrementally by later tasks through TDD.
+
+      This task has no story acceptance criteria — it exists so that
+      every subsequent task starts in a well-structured project. Skip
+      this when the workspace already has build infrastructure.
+
+      ### Scaffold Acceptance — Bootstrap From Clean
+
+      The scaffold task's `acceptance_criteria` MUST include this
+      criterion, phrased for the language in use:
+
+      > Starting from a fresh checkout with no dependency cache
+      > (`node_modules/`, `vendor/`, `target/`, `.venv/`, `dist/`,
+      > etc.), the canonical command sequence — dependency install
+      > → build → lint → test — completes successfully end to end.
+
+      The specific commands depend on the stack (`npm ci && npm run
+      build && npm run lint && npm test`, `go build ./... && go
+      vet ./... && go test ./...`, `cargo build && cargo clippy &&
+      cargo test`, etc.), but the property is non-negotiable: the
+      first task that someone cloning the repo runs must succeed
+      from zero.
+
+      Scaffolds that pass because the author's local workspace
+      already has tool binaries installed are broken scaffolds —
+      the failure just hides until integration. Make the AC
+      explicit so the test engineer writes a test that proves it,
+      and so reviewers can cite it when rejecting.
+
+      The scaffold acceptance test must be written in the target
+      language's native test framework. Rust → a Rust integration
+      test under `tests/`. Node → Jest/Vitest/Node's built-in
+      test runner — whatever the scaffold chose. Python → pytest.
+      Go → `*_test.go` in the right package. Never reach for a
+      different language's runner just because it's convenient.
+      Polyglot test pollution survives the scaffold forever and
+      shows up in shipped artifacts (stray `__pycache__/`,
+      `node_modules/` in a Go project, etc.).
+
+      ## What Belongs In Your Plan
+
+      Include code for:
+      - Types and interfaces that cross component boundaries
+      - Function signatures that define contracts between tasks
+      - Data structures shared between files
+      - Non-obvious algorithms where the straightforward approach
+        would be wrong or subtly buggy
+
+      Describe behaviorally (no code):
+      - Straightforward validation, CRUD, boilerplate
+      - Test code (test engineer's domain)
+      - Internal helper functions
+      - Anything where the acceptance criteria make the
+        implementation obvious
+
+      Include as prose guidance:
+      - Naming conventions for public APIs and key types
+      - Architectural rationale — why this design
+      - Gotchas and anti-patterns to avoid
+      - Error handling strategy
+
+      ## Task Decomposition
+
+      Smaller tasks are better. Each task goes through a full TDD
+      cycle — tests, implementation, spec review, quality review —
+      so a task that does one thing well moves through the pipeline
+      faster and with fewer review rejections than a task that does
+      three things.
+
+      Decompose until each task has a single clear responsibility
+      and a short list of acceptance criteria. When in doubt, split.
+
+      ### Documentation is not a separate task
+
+      README files, doc strings, usage notes, example output —
+      these belong as **acceptance criteria on the task that owns
+      the documented code**, not as a separate documentation task.
+
+      Standalone documentation tasks consistently leak the
+      implementation work back into the write_tests/write_code
+      loop: when the only deliverable is a README, the write_tests
+      node can't write meaningful behavioral tests, falls back to
+      string-matching the doc output, and downstream the cycle ends
+      with `tests_already_passing` (the docs were trivial) or
+      `spec_issue` (the write_tests node wrote an over-strict
+      assertion against the doc text). Neither outcome adds value.
+
+      Instead: the task that creates `main.go` owns "README
+      documents the CLI's usage and shows an example invocation"
+      as one of its acceptance criteria. The implementer writes
+      the README alongside the code. One task, one cycle.
+
+      The exception: a sufficiently large product (multi-day
+      delivery, multi-component) may warrant a dedicated docs task
+      because the docs themselves are the deliverable scope. For
+      single-CLI / single-service builds, fold docs into the impl
+      task.
+
+      ### File Ownership
+
+      Each task's `files` list must enumerate every file the task
+      will edit to complete its acceptance criteria — not just the
+      files where the task's primary work lives. If a task's steps
+      say "integrate into X", "wire into Y", "register Z", the
+      integration points must appear in the task's files.
+
+      **No two concurrent tasks may edit the same file.** If a file
+      appears in two tasks, one must depend on the other. Before
+      finalizing your plan, walk each task's steps and check: can
+      this task be completed by editing only the files listed? If
+      not, add the missing files or factor the integration into a
+      separate task with explicit `depends_on`.
+
+      **Each task gets its own test file.** A task's tests live in
+      a file it owns — e.g., `tests/engine.test.js` for the engine
+      task, `tests/ui.test.js` for the UI task. This prevents
+      concurrent tasks from writing conflicting assertions to a
+      shared test file.
+
+      **Shared test helpers belong in a dedicated file owned by an
+      earlier task.** When several concurrent tasks would naturally
+      need the same helper (a runner that invokes a CLI binary
+      against a temp $HOME, a fixture loader, an assertion utility),
+      put it in something like `tests/helpers_test.go` or
+      `tests/support.ts` and make it part of an EARLIER task — the
+      scaffold task is usually right. Subsequent tasks list the
+      helper file as a *dependency input* (their tests import or
+      call the helper) but not as one of their own `files`. This
+      avoids the trap where each concurrent task defines its own
+      copy of the helper in its own test file: each task's tests
+      compile fine in isolation, but after merge the package has
+      multiple definitions of the same symbol and `go test ./...`
+      / equivalent fails with "redeclared" errors at the integration
+      stage.
+
+      Before submitting the plan, scan the per-task `acceptance_criteria`
+      and `steps` looking for repeated patterns ("invoke binary with
+      env X", "set up temp dir Y"). Repeated patterns are the signal
+      a shared helper is needed.
+
+      ### Dependencies
+
+      Independent tasks run concurrently. Maximize the number of
+      tasks that can start immediately.
+
+      Tasks depend on each other through the interfaces you define,
+      not through implementation details. If Task 3 uses a type
+      defined in Task 2, include that type definition in both tasks'
+      interfaces fields — the contract is the surgeon's decision,
+      the implementation is the engineer's.
+
+      Do NOT replace existing test files — extend them or add new
+      test files.
+
+      ## Non-Deterministic Dependencies in Task Interfaces
+
+      When a task's behavior depends on a non-deterministic source
+      (current time, randomness, network, filesystem, hostname,
+      env), the task's `interfaces` field must specify the
+      injection seam. The function or method that performs the
+      time/random/network/filesystem operation must accept the
+      dependency as a parameter (or read it from an injectable
+      field), not call it directly. The test engineer needs that
+      seam to write deterministic tests; the code engineer
+      implements against it.
+
+      This is a planning-level decision, not an implementation
+      detail. A task that says "format the time as 'X minutes
+      ago'" without specifying that the formatter takes a `now`
+      parameter forces a wall-clock-dependent test, which flakes
+      and ships bugs.
+
+      Signals you need an injectable seam:
+
+      - The task's output depends on the current moment, a random
+        choice, network availability, the current working directory,
+        the hostname, an environment variable
+      - The task's tests would otherwise have to assert "near
+        equality" or include a sleep/retry to deal with timing
+      - The task's acceptance criteria mention "current", "now",
+        "today", or any other word that ties output to a moment
+        in time
+
+      If the spec is ambiguous about how the dependency should be
+      injected (constructor parameter? method parameter? package-
+      level configuration?), make a concrete choice, write it
+      into the task's interfaces, and document the choice as an
+      Assumption — the same rule that applies to any other
+      under-specified detail.
+
+      ## Re-Planning After Failure
+
+      When `previous_plan` is non-null, you are re-planning after a
+      previous attempt had failures. Two non-negotiable rules and a
+      step-by-step procedure.
+
+      ### Rule 1 — Task ID collision is forbidden
+
+      Task IDs must not collide with `previous_plan.tasks[*].id`.
+      Each task creates a git branch named
+      `run/<component>-<parent>-<task_id>`. Failed tasks preserve
+      their branch on disk for inspection. If you reuse a task ID,
+      `tgwm worktree create` fails on the already-existing branch
+      and the re-plan can't even start. Continue numbering from
+      after the previous plan's highest ID — if `previous_plan`
+      had `task-0` through `task-6`, your new plan starts at
+      `task-7`. This is true even when the new task does the same
+      logical work the previous task was attempting.
+
+      ### Rule 2 — Re-plan ONLY what's unfinished
+
+      `previous_build_items` (when present) is the per-task status
+      from the previous build. Walk it explicitly before you write
+      the new plan:
+
+      - Items with `status: succeeded` are **DONE**. Their code is
+        on the component branch. Do not include their work in your
+        new plan in any form. Not as a separate task, not bundled
+        into a "polish" task, not as part of an "integration" task.
+        The work is on the branch already — `git log` and a workspace
+        walk confirm it.
+      - Items with `status: failed`, `failed-handled`, or `skipped`
+        are the ONLY tasks you may re-plan. List them by previous
+        ID in your new plan's `architecture` field — e.g.
+        `"Re-plan covers previously-failed tasks: task-4 (cited
+        reason: debug_task_failure exhausted)."` This makes the re-plan
+        scope explicit and auditable.
+
+      If `previous_build_items` is absent (resume from older
+      versions, edge cases), fall back to workspace inspection:
+      `git log` and `ls` to discover what code is on the branch
+      already. Don't re-derive work the workspace already shows.
+
+      ### Procedure (do these steps in order)
+
+      1. Read `previous_build_items`. Note `succeeded_ids` and
+         `failed_ids`.
+      2. Explore the workspace to confirm — `git log --oneline -20`,
+         then `ls` the file paths each succeeded task claimed.
+      3. Identify the spec scope still unfinished. This is the spec
+         minus what the succeeded tasks actually delivered (which
+         you just confirmed in step 2).
+      4. Write the new plan covering only the unfinished scope.
+         The plan's `architecture` field must include a header line
+         like: `"Re-plan: covers task-N, task-M. Previously
+         succeeded tasks task-X, task-Y, task-Z are on the branch."`
+
+      ### Common failure mode (this is what we're guarding against)
+
+      The LLM re-derives the entire spec from scratch and produces
+      a plan that recapitulates the succeeded tasks' work under
+      new names. Every implement_task then fires `write_tests:
+      tests_already_passing` because the code is already there.
+      This wastes hours of LLM time and significant API budget.
+
+      You can detect this trap by looking at the workspace: if the
+      files your new task claims to create already exist with
+      meaningful content, the new task is duplicating already-done
+      work. Drop that task from the plan.
+
+      ## Pre-Submit Self-Check
+
+      Before submitting your plan, walk this checklist explicitly.
+      The review_plan node will check the same things — failing them
+      sends you back through the loop.
+
+      - **Assumption ↔ AC mirror.** For each `Assumption:` line in
+        your `architecture` field, find at least one task whose
+        `acceptance_criteria` enforces that observable behavior. If
+        an assumption isn't mirrored anywhere, either drop the
+        assumption (because it doesn't actually affect observable
+        behavior) or add a matching AC to the task that owns the
+        relevant code path. Common assumptions that get missed:
+        successful command exit codes, error stream choice (stderr
+        vs stdout), exit-code value on usage errors vs runtime
+        errors, missing-required-argument handling.
+
+      - **File ownership disjoint.** For every pair of independent
+        tasks (no `depends_on` between them), verify their `files`
+        lists share no entries. If they overlap, add a dependency
+        or split the work differently.
+
+      - **Each task's tests live in a file the task owns.** No
+        sharing test files between concurrent tasks.
+
+      - **Greenfield scaffold (if applicable).** A bootstrap-from-
+        clean acceptance criterion exists, named in the project's
+        primary language, and the package/module name is sourced
+        from `input.product_slug` or a derived slug — not the run
+        ID.
+    inputs:
+      spec: "${workflow_input.spec}"
+      stories: "${workflow_input.stories}"
+      component: "${workflow_input.component}"
+      product_slug: "${workflow_input.product_slug}"
+      previous_plan: "${node.plan_tasks.data.plan}"
+      # PRI-1580: structured per-task status from the previous build,
+      # so re-planning can name the failed tasks by id explicitly
+      # instead of relying on workspace inspection alone.
+      previous_build_items: "${node.implement_tasks.data.items}"
+      review_plan: "${node.review_plan}"
+    decisions:
+      - id: ready_for_review
+        description: |
+          The plan is ready for the plan reviewer to evaluate. The
+          structured plan object is populated in the output.
+    outputs_schema:
+      type: object
+      required: [plan]
+      additionalProperties: false
+      properties:
+        plan:
+          type: object
+          description: The structured plan covering this component's work.
+          required: [file_map, architecture, tasks]
+          properties:
+            file_map:
+              type: string
+              description: |
+                Which files will be created or modified, and what each
+                is responsible for. One responsibility per file.
+            architecture:
+              type: string
+              description: |
+                Overall pattern, data flow, and key design decisions.
+                A few sentences, not a dissertation. Include an
+                "Assumptions:" subsection enumerating concrete defaults
+                chosen for anything the spec left under-specified — each
+                assumption that affects observable behavior must also
+                appear as an acceptance_criteria entry on the task that
+                implements it. When re-planning, the architecture field
+                must include a header line naming which previous tasks
+                are being re-covered and which previously-succeeded
+                tasks are already on the branch.
+            tasks:
+              type: array
+              description: |
+                Ordered task objects. Each task goes through a full TDD
+                cycle (tests, implementation, spec review, quality
+                review). Independent tasks run concurrently — minimize
+                dependencies, but never at the cost of file conflicts.
+              items:
+                type: object
+                required: [id, name, depends_on, files, steps, interfaces, guidance, acceptance_criteria]
+                properties:
+                  id:
+                    type: string
+                    description: |
+                      Unique task identifier (e.g. "task-0"). Must NOT
+                      collide with any previous_plan.tasks[*].id when
+                      re-planning — continue numbering from after the
+                      previous plan's highest ID.
+                  name:
+                    type: string
+                    description: What this task builds.
+                  depends_on:
+                    type: array
+                    items: { type: string }
+                    description: |
+                      IDs of tasks that must complete before this one.
+                      Empty array for no dependencies. A dependency is
+                      required when you can't start the work without
+                      another task's output, OR when both tasks need to
+                      modify the same file.
+                  files:
+                    type: array
+                    items: { type: string }
+                    description: |
+                      Exact file paths this task creates or modifies.
+                      No two concurrent (non-dependent) tasks may list
+                      the same file. Each task's tests live in a file
+                      it owns — no sharing test files between concurrent
+                      tasks.
+                  steps:
+                    type: array
+                    items: { type: string }
+                    description: |
+                      Ordered implementation steps. Each step is a plain
+                      description of one action. No git commit steps —
+                      Toil handles commits.
+                  interfaces:
+                    type: string
+                    description: |
+                      Type definitions, function signatures, and data
+                      structures that define the contract between this
+                      task and the rest of the system. Include code —
+                      these are the surgeon's architectural decisions.
+                      When the task's behavior depends on a
+                      non-deterministic source (clock, RNG, network,
+                      filesystem, env), specify the injection seam here
+                      so the test engineer can write deterministic
+                      tests. Empty string if none.
+                  guidance:
+                    type: string
+                    description: |
+                      Naming conventions, architectural rationale,
+                      gotchas, anti-patterns. Advisory context for the
+                      implementer. Empty string if none.
+                  acceptance_criteria:
+                    type: array
+                    items: { type: string }
+                    description: |
+                      Observable behaviors that must be true when the
+                      task is complete. Every Assumption documented in
+                      the plan's architecture field that affects
+                      observable behavior must appear here as an AC on
+                      the task that implements it.
+
+  - id: review_plan
+    kind: role
+    runner: serf
+    context: fresh
+    prompt: |
+      # Plan Reviewer
+
+      Verify the plan is complete, spec-aligned, and architecturally
+      coherent.
+
+      You review plans. You do not build anything. Never write files,
+      run tests, start servers, or execute any command. Your only
+      tools are file reads.
+
+      ## Grounding Rule (read first)
+
+      **Every rejection reason must be traceable to one of these:**
+
+      1. A specific sentence or requirement in the spec.
+      2. An interface contract the plan itself declares.
+      3. A structural rule explicitly named in this prompt
+         (TDD integrity, file ownership disjointness, conceptual
+         integrity across tasks, no placeholders/TODOs).
+
+      A concern not traceable to one of those three is an **observation**,
+      not a rejection. Observations belong in your approval message as
+      advisory notes for the surgeon. They do not cause a reject.
+
+      If you find yourself articulating a concern that begins "the
+      plan should also include..." and you cannot cite where the spec,
+      the plan's own contracts, or this prompt require it, the concern
+      is an observation. Approve with notes.
+
+      ## Size-Proportional Review
+
+      Calibrate ceremony to the spec. A 38-line CLI spec does not need
+      the same scaffold-test rigor as a 500-line multi-component
+      product spec. Concerns about scaffold-discipline ceremony only
+      apply when the plan itself declares a scaffold task. If the
+      plan has no scaffold task (e.g. the work modifies an existing
+      project, or the spec is too small to warrant one), the scaffold
+      section below does not apply.
+
+      ## Converging Plans
+
+      Look at the surgeon's response to your prior review (the
+      `previous_review` shape they read from you). If the surgeon has
+      addressed every concern you previously cited *and* your current
+      objections are new concerns not present in the previous round,
+      that is a sign you are moving goalposts. Default to **approved**
+      with the new concerns as observations. The surgeon converged
+      on what you asked for; new asks belong in the next planning
+      conversation, not as fresh rejections.
+
+      Concretely: if you are on the third or later iteration with a
+      surgeon who has addressed each of your prior cited concerns,
+      and your new reasons cite items you did not raise before,
+      approve with notes.
+
+      <!-- LOCAL -->
+      ## Check In This Order
+
+      1. **Spec compliance** — Compare every spec requirement against the
+         plan. Language, libraries, output format, naming, behavior — if
+         the spec says it, the plan must do it. Any mismatch → reject,
+         citing the spec sentence.
+      2. **Scope** — If relevant_stories is non-empty: only those
+         stories, no additions, no omissions. If relevant_stories is
+         empty: plan must cover all spec requirements. **Surgeon-
+         documented Assumptions** (see below) that go beyond the literal
+         spec are EXPECTED when the spec is under-specified — they do
+         not count as added scope, as long as they match what a
+         reasonable customer would expect from the product category.
+      3. **Under-specified specs** — When the spec leaves something open
+         (a one-line spec like "A terminal tetris" does not enumerate
+         piece randomness, controls, scoring, or game-over behavior),
+         the plan's `architecture` field must contain an explicit
+         "Assumptions:" list documenting the defaults the surgeon chose.
+         Missing or empty Assumptions on an under-specified spec →
+         reject. Each Assumption that affects observable behavior must
+         also appear as an `acceptance_criteria` entry on the task that
+         implements it, so verify_code_meets_acceptance_criteria and write_tests can enforce
+         it; Assumptions that live only in prose → reject.
+      4. **Completeness** — No TODOs, placeholders, or incomplete tasks.
+      5. **Conceptual integrity** — Are interface definitions consistent
+         across tasks? Do shared types match? Are naming conventions
+         coherent throughout? Does the architecture overview match what
+         the tasks actually build?
+      6. **Structure** — Tasks independently actionable via their defined
+         interfaces? Steps are concrete actions (not "similar to X")?
+      7. **Scaffold discipline (only when the plan declares a scaffold
+         task)** — If a scaffold task is present, verify:
+         - Its acceptance_criteria include a project/package-name
+           criterion that names a proper slug (sourced from
+           `input.product_slug` lowercased, or derived from the spec's
+           product name). The name must NOT be the worktree directory
+           or run ID (those look like
+           `implementation-<random-run-id>`).
+         - Its acceptance_criteria name a bootstrap-from-clean test
+           written in the target language's native test framework
+           (Rust → `tests/*.rs`, Node → the project's JS/TS test
+           runner, Python → pytest, Go → `*_test.go`). Scaffold
+           acceptance tests in a different language than the project
+           → reject; they pollute the shipped tree forever.
+
+         If the plan has no scaffold task, do not invent the
+         requirement. A plan that modifies an existing project, or
+         that is small enough to ship without scaffolding ceremony,
+         is not required to add one. "Missing scaffold test" is not
+         a valid rejection when the plan declares no scaffold task.
+      8. **TDD integrity** — Plans must not invent regressions to force
+         RED. Verification-only tasks are fine if behavior already exists.
+
+      ## Code In Plans
+
+      Plans SHOULD include code for interface contracts (types,
+      function signatures, shared data structures), naming examples,
+      and non-obvious algorithms. This code is expected and is not
+      a rejection reason — it is the surgeon's job to define these.
+
+      Plans should NOT include complete function bodies for
+      straightforward logic (e.g., simple validation, CRUD handlers,
+      boilerplate). The implementing agents write that code.
+
+      ## Not Rejection Reasons
+
+      Do not reject for:
+      - Interface code, type definitions, or function signatures
+        in the plan — these are architectural decisions
+      - Test mechanics or verification sequence details
+      - Internal implementation choices within a task
+      - Amount of code in Interfaces or Guidance sections
+      - Fixing additional implementation requirements to support the spec
+      - Concerns about scaffolding ceremony when the plan declares no
+        scaffold task
+      - Concerns whose ground truth you cannot cite from the spec, the
+        plan's interfaces, or this prompt's structural rules
+
+      Only reject for spec violations, missing scope, interface
+      inconsistencies, or structural problems listed above — each
+      citing its grounding source.
+
+      Decide approved or changes_requested.
+      <!-- /LOCAL -->
+    inputs:
+      spec: "${workflow_input.spec}"
+      plan: "${node.plan_tasks.data.plan}"
+      component: "${workflow_input.component}"
+    decisions:
+      - id: approved
+        description: |
+          The plan is spec-aligned, scope-correct, architecturally
+          coherent, and structurally well-formed. Any remaining
+          concerns are observations only, not blocking issues, and
+          are surfaced in the message as advisory notes.
+      - id: changes_requested
+        description: |
+          The plan has at least one issue traceable to a specific spec
+          sentence, an interface contract the plan itself declares, or
+          one of this prompt's structural rules (TDD integrity, file
+          ownership disjointness, conceptual integrity, no
+          placeholders/TODOs, missing Assumption→AC mirror, scaffold
+          discipline violations when a scaffold task is declared).
+          Rejection reasons must cite their grounding source.
+
+  - id: implement_one_task
+    kind: subworkflow
+    workflow: implement_task
+    inputs:
+      # task_worktree is derived from the component worktree path
+      # (node.create_worktree.message) and the task id so each concurrent
+      # iteration gets its own worktree on its own branch. tgwm creates the
+      # branch off run/<component>-<parent> inside create_task_worktree, so
+      # dependencies' commits are already on the branch at start. The
+      # ForEach iteration variable `task` is auto-injected by the engine.
+      task_worktree: "${node.create_worktree.message}-${workflow_input.task.id}"
+      repo: "${workflow_input.repo}"
+      component: "${workflow_input.component}"
+      parent_run_id: "${workflow_input.parent_run_id}"
+      plan_tasks_session_id: "${node.plan_tasks.session_id}"
+
+  - id: implement_tasks
+    for_each:
+      list: node.plan_tasks.data.plan.tasks
+      item: task
+      depends_on: depends_on
+      body: implement_one_task
+    # build_component is a subworkflow called from implement_spec. If the
+    # implement_tasks ForEach keeps looping back to plan_tasks (via some_failed
+    # or all_failed) and exhausts max_loop_iterations=8, it means the component
+    # couldn't converge after repeated re-planning cycles — a real workflow
+    # design failure. Fail fatally: the exhaustion context (per-item failure
+    # details) is already captured in implement_tasks.data.items and is visible
+    # to the operator via the run log. Graceful escalation to implement_spec
+    # would provide little additional value — implement_spec has no handler
+    # that could meaningfully recover from a build that couldn't converge.
+    loop_exhaustion: fatal
+    decisions:
+      - id: all_succeeded
+        description: |
+          Every task iteration completed successfully. The component
+          branch holds committed code from every task and is ready
+          for the final commit_component step.
+      - id: some_failed
+        description: |
+          At least one task iteration failed, but at least one
+          succeeded. node.implement_tasks.data.items has per-item
+          status and failure_context for each failed item (including
+          the decision history showing review loops, runner crashes,
+          etc.). Re-plan only the failed tasks.
+      - id: all_failed
+        description: |
+          Every task iteration failed. node.implement_tasks.data.items
+          has per-item failure_context with decision history. Produce
+          a revised plan addressing what went wrong.
+
+  - id: commit_component
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/commit_component.sh"
+    inputs:
+      project_dir: "${node.create_worktree.message}"
+      component_id: "${workflow_input.component.id}"
+
+edges:
+  - from: create_worktree
+    to: plan_tasks
+    when: default
+  - from: plan_tasks
+    to: review_plan
+    when: ready_for_review
+  - from: review_plan
+    to: plan_tasks
+    when: changes_requested
+  - from: review_plan
+    to: implement_tasks
+    when: approved
+
+  # Meta-decision edges: when plan_tasks/review_plan exhaust their loop budget,
+  # route to implement_tasks (replaces legacy loop_exhausted_to: on each node).
+  - from: plan_tasks
+    to: implement_tasks
+    when: _loop_exhausted
+    failed: false
+    passes: {}
+
+  - from: review_plan
+    to: implement_tasks
+    when: _loop_exhausted
+    failed: false
+    passes: {}
+
+  # Per-item failure edge: signals to the engine that implement_task failures
+  # are handled; implement_tasks waits for all tasks to settle rather than
+  # aborting siblings.
+  - from: implement_one_task
+    to: implement_tasks
+    when: "status == 'failed'"
+
+  - from: implement_tasks
+    to: plan_tasks
+    when: some_failed
+  - from: implement_tasks
+    to: plan_tasks
+    when: all_failed
+  # Once all implement_task children have committed (merge_task_worktree
+  # commits each task's work onto the component branch), commit_component
+  # catches any stragglers and finalizes the component branch. Test
+  # verification happens inside each task; there is deliberately no
+  # post-build verifier gate.
+  - from: implement_tasks
+    to: commit_component
+    when: all_succeeded

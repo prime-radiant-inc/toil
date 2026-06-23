@@ -1,0 +1,27 @@
+id: forced_review_old
+name: Forced Review — Old Reviewer (A/B baseline)
+workflow_id: forced_review_test_old
+# Tests whether review_code_quality blocks vs approves on the
+# pine-valley-atlas pattern: duplicate source at tests/tests/cmd/mytool
+# (structurally suspicious) PLUS shadow test infrastructure
+# (tests building a separate test-only main instead of production).
+auto_approve: true
+inputs:
+  task:
+    id: task-cli
+    name: "Implement hello CLI with integration tests"
+    acceptance_criteria:
+      - "cmd/mytool prints 'hello world' to stdout"
+      - "Integration tests verify the CLI behavior"
+      - "go test ./... is green"
+    files:
+      - cmd/mytool/main.go
+      - tests/testutil/testutil.go
+      - tests/hello_test.go
+      - tests/version_test.go
+    guidance: |
+      The CLI lives at cmd/mytool/main.go. Integration tests live under
+      tests/ and use shared helpers in tests/testutil/testutil.go.
+    interfaces: ""
+    steps: []
+    depends_on: []

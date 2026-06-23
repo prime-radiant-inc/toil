@@ -1,0 +1,23 @@
+{{define "subworkflow-timeline"}}
+{{if not .}}<div class="text-muted text-xs p-2">No child runs found.</div>{{end}}
+{{range .}}
+<div class="mb-4">
+    <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-2">
+            <a href="{{.BasePath}}/runs/{{.RunID}}" class="font-mono text-sm text-accent hover:underline">{{.RunID}}</a>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide {{statusClass .Status}}">{{.Status}}</span>
+        </div>
+        <div class="text-xs text-muted text-right">
+            {{if not .StartedAt.IsZero}}{{.StartedAt.Local.Format "15:04:05"}}{{end}}
+            {{if gt .DurationMs 0}}<span class="ml-1">({{printf "%.1fs" (divFloat .DurationMs 1000.0)}})</span>{{end}}
+        </div>
+    </div>
+    {{if .Title}}<div class="text-xs text-muted mb-2">{{.Title}}</div>{{end}}
+    {{if .Entries}}
+    <div class="space-y-px">
+        {{range .Entries}}{{template "timeline-entry" .}}{{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}

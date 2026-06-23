@@ -1,0 +1,72 @@
+{{template "layout-start" .}}
+<div class="max-w-4xl mx-auto" id="agent-detail" data-base-path="{{.BasePath}}">
+
+  <header class="px-4 py-3 border-b border-edge">
+    <div class="text-xs text-muted font-mono">agent session · diagnostic view</div>
+    <h1 class="font-fraunces text-lg mt-1">{{.SessionID}}</h1>
+    <div class="text-xs text-muted font-mono mt-1">{{len .Executions}} execution{{if ne (len .Executions) 1}}s{{end}}</div>
+  </header>
+
+  {{range $i, $exec := .Executions}}
+  <section class="agent-exec" data-exec-index="{{$i}}">
+    <header class="agent-exec-head">
+      <span class="agent-exec-num">#{{add1 $i}}</span>
+      <a class="agent-exec-where" href="{{$.BasePath}}/runs/{{$exec.RunID}}#node-{{$exec.RunID}}-{{$exec.NodeID}}-attempt-{{$exec.Ordinal}}" title="open this execution in its run">
+        {{template "wf_widget" (dict "workflow_id" $exec.WorkflowID "run_id" $exec.RunID)}}
+        <span class="agent-exec-step">{{$exec.NodeID}}</span>
+        {{if gt $exec.Ordinal 1}}<span class="agent-exec-attempt">attempt {{$exec.Ordinal}}</span>{{end}}
+        {{if $exec.Resume}}<span class="agent-exec-resume">resume</span>{{end}}
+      </a>
+      <span class="agent-exec-time">{{$exec.StartedAt.Format "2006-01-02 15:04:05"}}</span>
+    </header>
+
+    {{if $exec.Prompt}}
+    <details open class="agent-exec-section">
+      <summary>input prompt</summary>
+      <pre class="agent-exec-prompt">{{$exec.Prompt}}</pre>
+    </details>
+    {{end}}
+
+    <details open class="agent-exec-section">
+      <summary>transcript</summary>
+      <div class="agent-exec-transcript" data-transcript-target="t-{{$i}}"></div>
+      <script id="t-{{$i}}" type="application/json">{{toJSON $exec.Transcript}}</script>
+    </details>
+
+    <details open class="agent-exec-section">
+      <summary>output</summary>
+      <div class="agent-exec-output">
+        {{if $exec.Decision}}<div><span class="muted">decision:</span> <span class="font-mono">{{$exec.Decision}}</span></div>{{end}}
+        {{if $exec.Message}}<div class="mt-1"><span class="muted">message:</span> <span>{{$exec.Message}}</span></div>{{end}}
+        {{if $exec.Artifacts}}
+        <div class="mt-1"><span class="muted">artifacts:</span>
+          <ul class="artifact-list">
+            {{range $exec.Artifacts}}
+            <li><span class="font-mono text-xs">{{.Kind}}</span> {{.Name}}{{if .Desc}} — <span class="text-muted">{{.Desc}}</span>{{end}}</li>
+            {{end}}
+          </ul>
+        </div>
+        {{end}}
+      </div>
+    </details>
+  </section>
+  {{end}}
+</div>
+
+<link rel="stylesheet" href="{{.BasePath}}/static/css/transcript.css">
+<link rel="stylesheet" href="{{.BasePath}}/static/css/agent_detail.css">
+<script src="{{.BasePath}}/static/js/generic_renderer.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/index.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/read_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/edit_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/write_file.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/shell.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/apply_patch.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/grep.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/glob.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/spawn_agent.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/task_list.js" defer></script>
+<script src="{{.BasePath}}/static/js/tool_renderers/communicate.js" defer></script>
+<script src="{{.BasePath}}/static/js/transcript_view.js" defer></script>
+<script src="{{.BasePath}}/static/js/agent_detail.js" defer></script>
+{{template "layout-end" .}}

@@ -1,0 +1,223 @@
+id: forced_review_test_dry
+name: Forced Review Test (DRY Violation)
+version: 1
+description: >
+  Seeds a workspace with two near-identical escape functions in the
+  same package — escapeHTML (escapes & < > ") in inline.go, and
+  escapeCodeBlockHTML (escapes & < > only — missing ") in
+  blocks_collections.go. Same package, divergent behavior, tests
+  pass because " inside code blocks isn't tested.
+  Used to test whether the reviewer catches this DRY violation as
+  Critical.
+inputs:
+  task: object
+  project_dir: string
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: seed
+    kind: role
+    runner: shell
+    prompt: "$TOIL_WORKFLOW_SCRIPT_DIR/seed.sh"
+    inputs:
+      project_dir: "${workflow_input.project_dir!}"
+    decisions: [seeded]
+
+  - id: write_tests
+    kind: emit
+    output:
+      decision: correct_failure
+      message: "Added inline and code-block escaping tests."
+      data:
+        modified_files: ["tests/render_test.go"]
+        issues_addressed: []
+
+  - id: write_code
+    kind: emit
+    output:
+      decision: tests_pass
+      message: "Implemented code-block escaping; tests pass."
+      data:
+        commit: "abc1234"
+        files_changed: ["internal/mdrender/blocks_collections.go"]
+        test_result: "PASS"
+
+  - id: verify_code_meets_acceptance_criteria
+    kind: emit
+    output:
+      decision: approved
+      message: "All ACs satisfied."
+      data:
+        compliance_notes: []
+
+  - id: review_code_quality
+    kind: role
+    runner: serf
+    context: fresh
+    # Same prompt as in implement_task.yaml — kept in sync manually.
+    prompt: |
+      # Code Quality Reviewer
+
+      You review absolute code quality — how the code is built. Spec
+      compliance (acceptance criteria, stated interfaces, task
+      requirements) has already been verified upstream by
+      verify_code_meets_acceptance_criteria. **Do not re-check spec
+      compliance.** Your concern is whether the code, on its own
+      merits, is well-built.
+
+      Your only tools are file reads and git commands (git status,
+      git ls-files). You do not run code.
+
+      ## Task as context, not as grading rubric
+
+      You receive the `task` object. **Read it for context** — to
+      understand what was being attempted, where work happened, what
+      contracts the engineer was implementing against. Knowing the
+      task helps you read the diff intelligently.
+
+      You **do not grade against the task**. A change that meets
+      every acceptance criterion can still be Critical-level poor
+      code (workarounds, structural debt, hygiene violations); a
+      change that misses an AC is not your concern (verify_code
+      catches that). Your verdict is about the code's intrinsic
+      quality, not whether it satisfies the spec.
+
+      <!-- LOCAL -->
+      ## Fix at the source
+
+      For each new file and each significant edit, ask:
+      **why does this code exist?**
+
+      - If the answer is "because the work genuinely requires it" —
+        review for correctness, clarity, hygiene.
+      - If the answer is "to compensate for incorrect or incomplete
+        behavior in other code in this same project" — string-
+        replacing an upstream's output, creating a file at a path
+        that's wrong elsewhere, re-implementing logic to bypass a
+        bug, post-filling fields a producer should have populated —
+        it's a **workaround**. The fix belongs at the source of the
+        wrong behavior, not at the compensation site. **Always
+        Critical.** Cite both the compensation AND the source.
+
+      Carve-out: adapters wrapping EXTERNAL contracts (third-party
+      libraries, OS APIs, network protocols) are legitimate — you
+      don't control the source. The principle is about
+      internal-to-internal coupling within this codebase.
+
+      ## DRY — don't repeat yourself
+
+      When you review new code, check whether it duplicates logic
+      that already exists in the same package or codebase —
+      parallel implementations of the same operation, or copy-pasted
+      blocks where one would do.
+
+      **Severity calibration**: duplication with diverging or
+      likely-to-diverge behavior is **Critical** — changing one site
+      and not the other ships a bug. Three nearly-identical lines
+      that are simple and unlikely to drift can be Minor. The hazard
+      is the divergence risk, not the line count.
+
+      Cite both sites when flagging — the duplication only exists
+      because two places exist.
+
+      Tradeoff: avoid premature abstraction. Three similar lines is
+      often clearer than a clever helper. The question is "if one
+      site changes, does the other site silently get wrong?" If yes,
+      unify. If no, the duplication may be fine.
+
+      ## YAGNI — you ain't gonna need it
+
+      When you review new code, check whether it adds capabilities
+      that nothing currently uses. Look for:
+
+      - Configuration knobs no code reads.
+      - Interface types with only one implementor and one caller.
+      - Defensive code for scenarios that can't happen (validating
+        internal calls, error handling for unreachable branches).
+      - Abstraction layers added for hypothetical future flexibility.
+      - Exports / public functions / types added but not yet consumed.
+
+      **Severity calibration**: complex unused infrastructure is
+      **Critical** — it adds maintenance burden, confuses future
+      readers, and rarely matches the actual future need when it
+      arrives. Trivial unused stubs are Minor. **Exception**: tasks
+      legitimately ship interfaces for later consumers — unused
+      exports are NOT flagged because cross-task ordering may put
+      consumers in later tasks.
+
+      ## Review checklist
+
+      - **Code quality**: clean separation of concerns, proper error
+        handling, type safety, edge cases handled. DRY and YAGNI
+        per the dedicated sections above.
+      - **Architecture**: sound design, no unnecessary coupling, no
+        workarounds (see above).
+      - **Testing**: tests verify real behavior — not shadow
+        implementations, not mocks of the unit under test.
+      - **Repo hygiene**: no build artifacts, runtime caches, polyglot
+        pollution, unwired declared configuration, uncommitted source.
+
+      ## Severity
+
+      - **Critical** — Reject. Bugs, security risks, workarounds (see
+        "Fix at the source"), or any pattern in the always-Critical
+        list below.
+      - **Minor** — Approve with notes. Style preferences,
+        optimization opportunities, observations. Record in the
+        message; don't reject.
+
+      There is no "Important" tier.
+
+      ## Always Critical (reject, not Minor)
+
+      - Workarounds per the "Fix at the source" principle.
+      - Uncommitted modifications or untracked source/test files
+        visible in `git status`.
+      - Source or test files in a language other than the project's
+        primary language.
+      - Declared configuration that is not wired to anything.
+      - Runtime artifacts or dependency caches committed to git.
+
+      ## Critical rules
+
+      **DO:**
+
+      - Lead with a brief **Strengths** section in your message —
+        name 1-3 things done well.
+      - Cite file:line for every issue.
+      - Apply "Fix at the source" by asking "why does this code
+        exist?" for each significant change.
+
+      **DON'T:**
+
+      - Mark nitpicks as Critical.
+      - Flag what you haven't read or run a check against.
+      - Be vague.
+      <!-- /LOCAL -->
+    inputs:
+      task: "${workflow_input.task!}"
+      verify_code_meets_acceptance_criteria: "${node.verify_code_meets_acceptance_criteria}"
+      write_code: "${node.write_code}"
+      write_tests: "${node.write_tests}"
+    decisions:
+      - id: approved
+        description: |
+          No Critical issues.
+      - id: changes_requested
+        description: |
+          At least one Critical issue.
+
+edges:
+  - from: seed
+    to: write_tests
+    when: seeded
+  - from: write_tests
+    to: write_code
+    when: correct_failure
+  - from: write_code
+    to: verify_code_meets_acceptance_criteria
+    when: tests_pass
+  - from: verify_code_meets_acceptance_criteria
+    to: review_code_quality
+    when: approved

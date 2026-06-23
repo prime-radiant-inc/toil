@@ -1,0 +1,91 @@
+{{template "layout-start" .}}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="heading-display text-2xl">Overview</h1>
+            <p class="text-sm text-muted">Control plane and observability for Toil runs.</p>
+        </div>
+        <a href="{{.BasePath}}/workflows" class="btn-primary">Start Workflow</a>
+    </div>
+
+    {{if gt .PendingApprovals 0}}
+    <a href="{{.BasePath}}/approvals" class="card flex items-center gap-3 px-4 py-3 border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors">
+        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div class="flex-1">
+            <div class="text-sm font-medium text-amber-900">{{.PendingApprovals}} approval{{if gt .PendingApprovals 1}}s{{end}} waiting</div>
+            <div class="text-xs text-amber-700">Human gates need your attention.</div>
+        </div>
+        <span class="text-xs text-amber-600">Review &rarr;</span>
+    </a>
+    {{end}}
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div class="card px-4 py-3">
+            <div class="section-label">Workflows</div>
+            <div class="text-2xl font-medium mt-1">{{.WorkflowCount}}</div>
+        </div>
+        <div class="card px-4 py-3">
+            <div class="section-label">Runs</div>
+            <div class="text-2xl font-medium mt-1">{{.RunCount}}</div>
+        </div>
+        <div class="card px-4 py-3">
+            <div class="section-label">Execution Groups</div>
+            <div class="text-2xl font-medium mt-1">{{.ExecutionGroups}}</div>
+        </div>
+        <div class="card px-4 py-3">
+            <div class="section-label">Active Groups</div>
+            <div class="text-2xl font-medium mt-1">{{.ActiveGroups}}</div>
+        </div>
+        <div class="card px-4 py-3">
+            <div class="section-label">Active Child Runs</div>
+            <div class="text-2xl font-medium mt-1">{{.ActiveRuns}}</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="px-4 py-3 border-b border-edge flex items-center justify-between">
+            <h2 class="heading-display text-lg">Recent Execution Groups</h2>
+            <a href="{{.BasePath}}/runs" class="link-subtle">View all</a>
+        </div>
+        {{if .RecentGroups}}
+        <div class="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 border-b border-edge-light bg-surface">
+            <div class="col-span-3 section-label">Root Run</div>
+            <div class="col-span-3 section-label">Title</div>
+            <div class="col-span-1 section-label">Status</div>
+            <div class="col-span-2 section-label">Started</div>
+            <div class="col-span-1 section-label">Duration</div>
+            <div class="col-span-2 section-label">Child Runs</div>
+        </div>
+        <div class="divide-y divide-edge-light">
+            {{range .RecentGroups}}
+            <div class="px-4 py-3 hover:bg-edge-light transition-colors">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center text-sm">
+                    <div class="col-span-1 lg:col-span-3 min-w-0">
+                        <a class="font-mono text-xs text-accent hover:underline truncate" href="{{$.BasePath}}/runs/{{.Root.ID}}">{{.Root.ID}}</a>
+                    </div>
+                    <div class="col-span-1 lg:col-span-3 min-w-0">
+                        <div class="font-medium text-ink truncate">{{.Root.Title}}</div>
+                        {{if .Root.Description}}<div class="text-xs text-muted truncate">{{.Root.Description}}</div>{{end}}
+                        <div class="text-xs text-muted truncate">{{.Root.WorkflowID}}</div>
+                    </div>
+                    <div class="col-span-1 lg:col-span-1">
+                        <span class="px-2 py-0.5 rounded-full text-xs {{statusClass .GroupStatus}}">{{humanizeStatus .GroupStatus}}</span>
+                    </div>
+                    <div class="col-span-1 lg:col-span-2 text-ink-light" title="{{formatTime .Root.StartedAt}}">{{timeAgo .Root.StartedAt}}</div>
+                    <div class="col-span-1 lg:col-span-1 text-ink-light">{{.Root.Duration}}</div>
+                    <div class="col-span-1 lg:col-span-2 text-ink-light">{{.TotalRuns}} total · {{.ActiveRuns}} active</div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="px-4 py-8 text-center">
+            <div class="text-sm text-muted">No execution groups yet.</div>
+            <a href="{{.BasePath}}/workflows" class="inline-block mt-2 text-sm text-accent hover:underline">Start a workflow &rarr;</a>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{template "layout-end" .}}

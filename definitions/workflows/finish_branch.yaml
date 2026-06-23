@@ -1,0 +1,74 @@
+id: finish_branch
+name: Finish Branch
+version: 1
+description: >
+  Branch completion utility. The release manager runs the tests as part
+  of its merge action and then auto-merges by default.
+interview: on_issue
+inputs:
+  project_dir: string
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: release_manager
+    kind: role
+    runner: serf
+    runner_env:
+      SERF_MODEL: gpt-5.4-mini
+      SERF_REASONING_EFFORT: low
+    prompt: |
+      # Release Manager
+
+      Execute the branch completion action specified by `choice` (one of: merge,
+      pr, keep, discard). Do not re-prompt or present options — the choice is made.
+
+      ## Actions
+
+      ### merge (Merge Locally)
+      1. `git checkout <base-branch> && git pull`
+      2. `git merge <feature-branch>`
+      3. Run the test suite on the merged result
+      4. If tests pass: `git branch -d <feature-branch>`
+      5. Clean up worktree if applicable
+
+      ### pr (Push and Create PR)
+      1. `git push -u origin <feature-branch>`
+      2. `gh pr create --title "<title>" --body "<summary + test plan>"`
+      3. Clean up worktree if applicable
+
+      ### keep (Keep As-Is)
+      Report what branch is being kept and where the worktree is. Do not clean up.
+
+      ### discard (Discard Work)
+      1. `git checkout <base-branch>`
+      2. `git branch -D <feature-branch>`
+      3. Clean up worktree if applicable
+
+      ## Worktree Cleanup
+
+      For merge, pr, and discard: check if the current directory is a worktree
+      (`git worktree list`) and remove it. For keep: preserve the worktree.
+
+      Default completion mode is merge. For merge and pr modes, run the full
+      test suite yourself before completing the action. Abort and report the
+      failure if tests don't pass — never merge broken code.
+
+      <!-- LOCAL -->
+      ## Output Format
+
+      ```json
+      {
+        "decision": "done",
+        "message": "What was executed: merged locally / PR created / branch kept / branch discarded.",
+        "data": {},
+        "artifacts": []
+      }
+      ```
+      <!-- /LOCAL -->
+    inputs:
+      choice: merge
+      choice_message: Automated by workflow policy
+    decisions: [done]
+
+edges: []

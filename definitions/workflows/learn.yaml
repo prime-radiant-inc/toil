@@ -1,0 +1,141 @@
+id: learn
+name: Post-Run Learning
+version: 2
+description: >
+  Interviews interviewable nodes from a completed run, then synthesizes
+  learnings into proposals for later review.
+interview: never
+inputs:
+  run_id: string
+  run_dir: string
+  run_context: string
+  interviewable_nodes: list
+input_schema:
+  run_context:
+    optional: true
+nodes:
+  - id: interview_item
+    kind: subworkflow
+    workflow: interview
+    inputs:
+      node_id: "${workflow_input.node_info.node_id}"
+      role_id: "${workflow_input.node_info.role_id}"
+      session_id: "${workflow_input.node_info.session_id}"
+      outcome: "${workflow_input.node_info.outcome}"
+      attempts: "${workflow_input.node_info.attempts}"
+      run_context: "${workflow_input.run_context}"
+
+  - id: run_interviews
+    for_each:
+      list: input.interviewable_nodes
+      item: node_info
+      body: interview_item
+    decisions: [all_succeeded, some_failed, all_failed]
+
+  - id: synthesize
+    kind: role
+    runner: serf
+    context: fresh
+    prompt: |
+      # Learning Synthesizer
+
+      Analyze post-run interview data and propose concrete updates to
+      workflow prompts and skill files.
+
+      ## Process
+
+      1. Read all interview responses and the run's event log (failures, retries,
+         durations, circuit breakers)
+      2. Read current workflow prompts and skill files referenced by interviews
+      3. **Correlate** — Look for convergent evidence: the same issue from multiple
+         agents, or one agent's report confirmed by event log data (retries, failures
+         at boundaries)
+      4. **Categorize** each learning:
+         - **Scope**: project-specific vs. generalizable
+         - **Type**: workflow prompt change vs. skill file change
+      5. **Deduplicate** — Skip learnings already covered by existing instructions
+      6. **Propose** — Write concrete text additions for specific target files.
+         Not vague suggestions ("improve error handling") but actual paragraphs
+         ready for insertion.
+
+      ## Cross-Role Attribution
+
+      Pay special attention where `source_node` differs from `target_node`. These
+      indicate friction at node boundaries. Cross-node learnings backed by event log
+      evidence are the highest-value proposals.
+
+      <!-- LOCAL -->
+      ## Output Format
+
+      ```json
+      {
+        "decision": "learnings_synthesized",
+        "message": "Summary: N proposals across M target files. Key themes.",
+        "data": {
+          "proposals": [
+            {
+              "target_file": "definitions/workflows/implement_task.yaml",
+              "summary": "Add guidance on table-driven test patterns to write_tests prompt",
+              "proposed_text": "## Table-Driven Tests\n\nWhen testing functions with multiple input/output cases...",
+              "evidence": [
+                "interview:write_code - 'tests were hard to read because each case was a separate function'",
+                "event_log: green_check looped 4 times before passing"
+              ],
+              "cross_node": true,
+              "category": "generalizable"
+            }
+          ]
+        },
+        "artifacts": []
+      }
+      ```
+
+      Each proposal must include:
+      - `target_file` — exact path to the file that should be updated
+      - `summary` — one-line description of the proposed change
+      - `proposed_text` — the actual text to add (ready for the editor to integrate)
+      - `evidence` — list of interview quotes and event log references supporting this
+      - `cross_node` — true if the learning came from interviewing a different node
+      - `category` — `project` or `generalizable`
+      <!-- /LOCAL -->
+    inputs:
+      run_id: "${workflow_input.run_id!}"
+      run_dir: "${workflow_input.run_dir!}"
+    decisions: [learnings_synthesized]
+    outputs_schema:
+      type: object
+      required: [proposals]
+      properties:
+        proposals:
+          type: array
+          items:
+            type: object
+            required: [target_file, summary, proposed_text, evidence, cross_node, category]
+            properties:
+              target_file: { type: string }
+              summary: { type: string }
+              proposed_text: { type: string }
+              evidence:
+                type: array
+                items: { type: string }
+              cross_node: { type: boolean }
+              category:
+                type: string
+                enum: [project, generalizable]
+
+edges:
+  # Per-item failure edge: a failed interview doesn't kill the whole learn run
+  - from: interview_item
+    to: run_interviews
+    when: "status == 'failed'"
+
+  # Synthesize always runs — partial interview data still produces learnings
+  - from: run_interviews
+    to: synthesize
+    when: all_succeeded
+  - from: run_interviews
+    to: synthesize
+    when: some_failed
+  - from: run_interviews
+    to: synthesize
+    when: all_failed

@@ -1,0 +1,15 @@
+.env
+/runs/
+/tests/fixtures/superpowers_demo_app/demo
+/bin/
+.worktrees/
+.claude/worktrees/
+tmp/
+repos/
+/tgwm
+/toil
+.superpowers/
+.claude/settings.local.json
+.kata.local.toml
+.kata.toml
+.claude/scheduled_tasks.lock

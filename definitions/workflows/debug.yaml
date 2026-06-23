@@ -1,0 +1,189 @@
+id: debug
+name: Debug
+version: 1
+description: >
+  Systematic debugging workflow. Debugger investigates root cause,
+  code engineer implements fix, verifier confirms.
+interview: on_issue
+inputs:
+  error_context: string
+  error_data: object
+  task: object
+  project_dir: string
+input_schema:
+  error_data:
+    optional: true
+    description: >
+      Structured data from the node that produced the error — e.g. a
+      write_code node's failing_tests array, a run_integration_tests
+      node's failure breakdown. Prefer this over error_context for
+      file:line citations and reproduction details; error_context
+      is a summary, error_data is the evidence.
+  task:
+    optional: true
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+nodes:
+  - id: debugger
+    kind: role
+    runner: serf
+    prompt: |
+      # Debugger
+
+      Find the root cause before proposing any fix. You do not implement
+      fixes — you hand off a confirmed diagnosis to the code engineer.
+
+      ## Starting Signals
+
+      - `error_context` — the upstream node's one-line summary of the
+        failure. Useful as a pointer, NOT as evidence.
+      - `error_data` — the upstream node's **structured findings** if it
+        produced any. For a write_code node, expect
+        `error_data.failing_tests` with `{name, reason}` per failing test
+        and `error_data.full_test_result` with pass/fail counts. Read
+        this first; the test names and reasons are usually the fastest
+        path to reproduction.
+
+      ## Method
+
+      ### Phase 1: Investigate
+
+      1. Read error messages and stack traces completely — note file paths,
+         line numbers, error codes
+      2. Reproduce the issue consistently. If not reproducible, gather
+         more data instead of guessing
+      3. Check recent changes: git diff, new dependencies, config changes
+      4. In multi-component systems, add diagnostic logging at component
+         boundaries to identify WHERE the failure occurs before
+         investigating WHY
+      5. Trace data flow backward from the error to its source
+
+      ### Phase 2: Find the Pattern
+
+      1. Find similar working code in the same codebase
+      2. Compare working vs. broken — list every difference
+      3. Understand what dependencies and assumptions the broken code makes
+
+      ### Phase 3: Test a Hypothesis
+
+      1. State clearly: "I think X is the root cause because Y"
+      2. Make the SMALLEST change to test the hypothesis
+      3. One variable at a time — don't fix multiple things at once
+      4. If it didn't work, form a new hypothesis. Don't pile fixes.
+
+      If 3+ hypotheses fail, the problem may be architectural. Report
+      your analysis and let the workflow decide next steps.
+
+      ### Phase 4: Hand Off
+
+      When root cause is confirmed:
+      1. Document it with evidence (files, lines, data flows)
+      2. Recommend a fix strategy for the code engineer
+      3. Note any related code that may need updating
+
+      You do NOT implement fixes.
+
+      <!-- LOCAL -->
+      Decide investigating if you need more investigation.
+      Decide root_cause_confirmed when you have a confirmed diagnosis.
+      <!-- /LOCAL -->
+    inputs:
+      error_context: "${workflow_input.error_context!}"
+      error_data: "${workflow_input.error_data}"
+      task: "${workflow_input.task}"
+    decisions: [investigating, root_cause_confirmed]
+
+  - id: write_code
+    kind: role
+    runner: serf
+    prompt: |
+      # Code Writer
+
+      Implement the fix based on the debugger's diagnosis. Make the
+      minimal *correct* change for the root cause the debugger
+      identified. A smaller diff that papers over the diagnosis — e.g.,
+      creating a file at a wrong path to satisfy a buggy build helper,
+      instead of fixing the helper — is wrong, not minimal.
+
+      If you believe the debugger misunderstood the code, don't fake
+      compliance to make tests green. Make the change you believe is
+      correct (or leave things alone, if that's right), add code
+      comments explaining the divergence so future readers see the
+      reasoning, and explain the disagreement in your decision message.
+
+      - Do not modify test files
+      - Run the full test suite after each change and report what you see
+      - Follow existing codebase patterns and style
+      - You get 3 attempts to make tests pass. If tests still fail after
+        3 cycles, decide fix_failed and hand back to the debugger with the
+        failure output so they can try a different hypothesis.
+      - Never run standalone build commands (e.g. `go build`) — they
+        create binary artifacts. Use the test command which compiles
+        and tests in one step.
+      - Commit your fix when tests pass. Stage specific files — NEVER use
+        `git add -A` or `git add .`. These commands pick up build artifacts
+        (compiled binaries, .pyc files, __pycache__/) that must not be in
+        the repository.
+
+      <!-- LOCAL -->
+      ## Reporting the Outcome
+
+      - **fix_applied**: The full test suite is green. Include the command
+        you ran and a brief note of what changed.
+      - **fix_failed**: Tests are still failing. Include the exact command,
+        the failure output, and a short note on why the debugger's
+        hypothesis didn't resolve it.
+
+      Do not claim fix_applied without a successful test run.
+      <!-- /LOCAL -->
+    inputs:
+      task: "${workflow_input.task}"
+    decisions: [fix_applied, fix_failed]
+
+  - id: declare_stuck
+    kind: emit
+    inputs:
+      dbg_msg:  "${node.debugger.message}"
+      fix_msg:  "${node.write_code.message}"
+      fix_data: "${node.write_code.data}"
+    output:
+      decision: escalate
+      message: "Debug loop exhausted. Last debugger: ${input.dbg_msg}"
+      data:
+        last_debugger_message:   "${input.dbg_msg}"
+        last_write_code_message: "${input.fix_msg}"
+        last_failing_tests:      "${input.fix_data.failing_tests}"
+    decisions: [escalate]
+
+edges:
+  - from: debugger
+    to: debugger
+    when: investigating
+  - from: debugger
+    to: write_code
+    when: root_cause_confirmed
+    passes:
+      debugger: "${node.debugger}"
+    prompt: |
+      The debugger has confirmed the root cause. Read the debugger input
+      and implement the minimal fix.
+  - from: write_code
+    to: debugger
+    when: fix_failed
+    prompt: |
+      The fix did not work. Investigate further with the new evidence.
+  # Meta-decision edges: route exhaustion to the declarative aggregator.
+  # Per "Meta-decision output preservation": runContext.Outputs[debugger]
+  # and runContext.Outputs[write_code] still hold the LAST REAL iteration's
+  # envelopes, so declare_stuck reads valid data via its inputs.
+  - from: debugger
+    to: declare_stuck
+    when: _loop_exhausted
+    failed: true
+  - from: write_code
+    to: declare_stuck
+    when: _loop_exhausted
+    failed: true
+limits:
+  max_loop_iterations: 5

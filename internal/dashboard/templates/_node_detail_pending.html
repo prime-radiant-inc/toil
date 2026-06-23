@@ -1,0 +1,15 @@
+{{define "node-detail-pending"}}
+<div data-node-detail-kind="pending" class="p-3 space-y-3">
+    <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-600">pending</span>
+        <span class="text-sm text-muted">This node has not run yet.</span>
+    </div>
+    {{if .PendingReason}}<div class="text-xs text-muted">{{.PendingReason}}</div>{{end}}
+    {{if .Prompt}}
+    <div>
+        <div class="text-[10px] font-semibold uppercase tracking-wide text-muted mb-1">Prompt</div>
+        <div class="transcript-item-content">{{renderMarkdown .Prompt}}</div>
+    </div>
+    {{end}}
+</div>
+{{end}}

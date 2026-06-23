@@ -1,0 +1,62 @@
+id: force_multistory_partial_failure
+name: ForEach Partial Failure — One Trivial Story + One Forcing Story
+workflow_id: implement_spec
+# Designed to drive the `implement_tasks` ForEach inside build_component
+# into a `some_failed` aggregate state:
+#
+#   - story-1 is trivially satisfiable (one AC, easy code path).
+#   - story-2 has contradictory ACs (same recipe as v7_loop_exhaustion
+#     but pasted here so the eval is self-contained). The implement_task
+#     subworkflow on story-2 will exhaust max_loop_iterations=4 and route
+#     `_loop_exhausted` to the judge (`resolve_review_dispute`), which
+#     either escalates or routes back into the loop.
+#
+# Verification targets:
+#   1. The ForEach engine aggregates correctly when one child task succeeds
+#      and another exhausts — `node.implement_tasks.data.items` should have
+#      per-item failure_context populated for story-2 and a clean success
+#      record for story-1.
+#   2. build_component's `_loop_exhausted` -> implement_tasks routing
+#      (lines 829-836 of build_component.yaml) handles the some_failed
+#      case correctly, looping back to plan_tasks for re-planning.
+#   3. build_component's `loop_exhaustion: fatal` (line 778) fires loudly
+#      when the build_component outer loop exhausts (max=8).
+#   4. Per-task worktree isolation: story-1's worktree merge doesn't
+#      collide with story-2's exhausted worktree.
+#
+# Cost expectation: aggressively monitored. The watcher should kill the
+# run after observing ONE full `implement_tasks` ForEach cycle resolve
+# to `some_failed` — at that point we have the data we need without
+# burning the outer build_component re-plan budget (which could cycle
+# up to 8 times at ~$10/cycle = $80+).
+#
+# Expected raw cost without monitor cap: $40-80. With cap: $8-15.
+auto_approve: true
+approvals:
+  human_review:
+    decision: approved
+    message: "Plan approved."
+inputs:
+  spec: |
+    # Tiny Greet CLI
+
+    A trivial command-line tool with two behaviors. Implemented in Go
+    as a single `main` package. No external dependencies.
+  stories:
+    - id: story-1
+      title: Print version
+      description: User can invoke the CLI with --version and see a fixed string printed.
+      acceptance_criteria:
+        - "`./greet --version` prints exactly `greet 0.1.0\\n` to stdout and exits with code 0"
+    - id: story-2
+      title: Print greeting (CONTRADICTORY ACs)
+      description: User can invoke the CLI with a name argument. The ACs below are deliberately contradictory and CANNOT all be satisfied — they are a forcing function for the verify-loop exhaustion path.
+      acceptance_criteria:
+        - "`./greet hello` must print exactly `Hello, hello!\\n` to stdout (trailing newline)"
+        - "The output of `./greet hello` must NOT contain any newline character (no trailing \\n)"
+        - "`./greet` (no args) must print `(no name)\\n` to stdout and exit with code 0"
+        - "`./greet` (no args) must print `(no name)\\n` to stderr and exit with code 1"
+        - "All greeting output goes to stdout; nothing is written to stderr"
+        - "All greeting output goes to stderr; nothing is written to stdout"
+verify:
+  command: "go test -timeout 30s ./..."

@@ -1,0 +1,173 @@
+id: initial_port
+name: Initial Port
+version: 1
+description: >
+  One-shot workflow that produces a target-language port of a source
+  repository's core abstractions with tests.
+interview: on_issue
+
+inputs:
+  source_repo: Path or URL to the source repository
+  source_language: Language of the source (e.g., python)
+  target_language: Language of the target (e.g., go)
+  checkpoint: Commit SHA to port as-of (optional, defaults to HEAD)
+  project_dir: Where to write the target project
+
+workspace_defaults:
+  mode: project
+  path: "${env.PROJECT_DIR}"
+
+limits:
+  max_loop_iterations: 5
+
+nodes:
+  - id: analyze_source
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    prompt: |
+      # Source Analyzer
+
+      <!-- LOCAL -->
+      Clone or navigate to ${input.source_repo}. If a checkpoint is
+      specified (${input.checkpoint}), check out that commit.
+
+      Analyze the ${input.source_language} repository and write
+      .ai/port_analysis.md covering:
+      - Core abstractions and type hierarchy
+      - Public API surface and key interfaces
+      - Design patterns and architectural decisions
+      - Dependencies and their purposes
+      - Test patterns and coverage areas
+
+      Focus on what matters semantically, not syntactic details. Identify
+      which parts are language-specific (adapt) versus universal (preserve).
+      <!-- /LOCAL -->
+
+  - id: plan_port
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    decisions: [ready]
+    # Top-level workflow; exhaustion means the plan ↔ human_review loop
+    # couldn't converge within max_loop_iterations=5. No parent to escalate
+    # to — fail fatally so the operator sees a clear error rather than a
+    # partially-reviewed plan silently terminating.
+    loop_exhaustion: fatal
+    prompt: |
+      # Port Planner
+
+      <!-- LOCAL -->
+      Read .ai/port_analysis.md and design an idiomatic
+      ${input.target_language} project structure. Write .ai/port_plan.md:
+
+      - Module/package layout with rationale
+      - Type mappings (source → target with adaptation notes)
+      - Interface design following target language idioms
+      - Implementation priorities
+      - Test strategy
+
+      Focus on semantic equivalence, not literal translation.
+      <!-- /LOCAL -->
+  - id: human_review
+    kind: human
+    gate: required
+    decisions: [approved, changes_requested]
+    # Top-level workflow; the human kept requesting changes but the port
+    # planner couldn't satisfy them within max_loop_iterations=5. No parent
+    # to escalate to — fail fatally so the operator can decide whether to
+    # extend the limit or revisit the plan requirements.
+    loop_exhaustion: fatal
+    prompt: |
+      Review the port plan in .ai/port_plan.md before implementation begins.
+      The plan describes porting from ${input.source_language} to ${input.target_language}.
+
+  - id: implement_port
+    kind: role
+    runner: serf
+    timeout_sec: 2400
+    prompt: |
+      # Port Implementer
+
+      <!-- LOCAL -->
+      Follow the plan in .ai/port_plan.md. Create the
+      ${input.target_language} project in ${input.project_dir} with
+      module structure, types, and implementations. Focus on clean,
+      idiomatic code with semantic equivalence to the source.
+      <!-- /LOCAL -->
+
+  - id: write_tests
+    kind: role
+    runner: serf
+    timeout_sec: 1800
+    prompt: |
+      # Port Tester
+
+      <!-- LOCAL -->
+      Write comprehensive tests for the ${input.target_language} project
+      in ${input.project_dir}:
+      - Core type behavior and interface contracts
+      - Key functionality matches upstream semantic intent
+      - Edge cases and error handling
+      - Integration between components
+
+      Run the full test suite. The build must compile and all tests must pass.
+      <!-- /LOCAL -->
+
+  - id: validate
+    kind: role
+    runner: serf
+    timeout_sec: 1200
+    decisions: [pass, fail]
+    # Top-level workflow; exhaustion means the validate ↔ fix_issues loop
+    # couldn't produce a passing build within max_loop_iterations=5. No
+    # parent to escalate to — fail fatally so the operator sees that the
+    # port has unresolved test/build failures.
+    loop_exhaustion: fatal
+    prompt: |
+      # Validator
+
+      <!-- LOCAL -->
+      Run the build and full test suite for the ${input.target_language}
+      project in ${input.project_dir}. Report exact output with evidence.
+      <!-- /LOCAL -->
+
+  - id: fix_issues
+    kind: role
+    runner: serf
+    timeout_sec: 1800
+    # Top-level workflow; see validate comment above. Fatal opt-out consistent
+    # across both nodes in this SCC.
+    loop_exhaustion: fatal
+    prompt: |
+      # Fix Issues
+
+      <!-- LOCAL -->
+      Fix compilation or test failures in the ${input.target_language}
+      project at ${input.project_dir}. Address all issues from the
+      validation report.
+      <!-- /LOCAL -->
+
+edges:
+  - from: analyze_source
+    to: plan_port
+  - from: plan_port
+    to: human_review
+    when: ready
+  - from: human_review
+    to: implement_port
+    when: approved
+  - from: human_review
+    to: plan_port
+    when: changes_requested
+    prompt: |
+      The reviewer requested changes. Revise the plan based on their feedback.
+  - from: implement_port
+    to: write_tests
+  - from: write_tests
+    to: validate
+  - from: validate
+    to: fix_issues
+    when: fail
+  - from: fix_issues
+    to: validate
